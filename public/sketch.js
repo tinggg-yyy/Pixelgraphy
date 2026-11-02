@@ -35,10 +35,10 @@ function canvasSize() {
   const header = document.querySelector("header");
   const headerH = header?.offsetHeight || 60;
   if (window.matchMedia(WIDE_QUERY).matches) {
-    // 画布填满中间那栏，高度不超过一屏；减掉的是边框和外阴影
+    // 画布竖向撑满一屏（减去上下留白 14+14、顶栏下间距 12、边框和外阴影 8），宽不超过中间那栏
     const col = document.getElementById("canvas-col");
-    const colW = (col?.clientWidth || windowWidth - 600) - 12;
-    return Math.floor(Math.max(200, Math.min(colW, windowHeight - headerH - 64, 960)));
+    const colW = (col?.clientWidth || windowWidth - 400) - 8;
+    return Math.floor(Math.max(200, Math.min(colW, windowHeight - headerH - 48)));
   }
   const tools = document.getElementById("tools");
   const left = document.getElementById("left-panel");
@@ -184,11 +184,21 @@ function markDirty() {
 
 let currentFilter = "none";
 let sparkleOn = false; // 闪粉：单独的开关，能叠在任何滤镜上
+let glitchSeed = 0; // 故障：0 = 关；每次打开换一个种子，换一套故障
 try {
   const saved = localStorage.getItem("pixelgraphy_filter");
   if (FILTERS[saved]) currentFilter = saved;
   sparkleOn = localStorage.getItem("pixelgraphy_sparkle") === "1";
+  glitchSeed = Number(localStorage.getItem("pixelgraphy_glitch")) || 0;
 } catch (_) {}
+
+function setGlitch(on) {
+  glitchSeed = on ? 1 + Math.floor(Math.random() * 1e9) : 0;
+  try {
+    localStorage.setItem("pixelgraphy_glitch", String(glitchSeed));
+  } catch (_) {}
+  markDirty();
+}
 
 function setSparkle(on) {
   sparkleOn = on;
@@ -220,6 +230,7 @@ function draw() {
   background(themeBg());
   renderGrid(window, width);
   renderCellLines(window, width);
+  if (glitchSeed) applyGlitch(drawingContext.canvas, glitchSeed);
 }
 
 // ── 工具 ─────────────────────────────────────────────
@@ -426,6 +437,7 @@ function saveImage() {
     else g.background(themeBg());
     renderGrid(g, S);
   }
+  if (glitchSeed) applyGlitch(g.elt, glitchSeed);
   applyFilter(g.elt, currentFilter, sparkleOn);
   const blob = dataURLToBlob(g.elt.toDataURL(fmt.mime, 0.95));
   g.remove();
@@ -510,6 +522,9 @@ function syncShadowInputs() {
   set("shadow-y", shadow.y);
   set("shadow-alpha", shadow.alpha);
   set("shadow-color", shadow.color || currentTheme.ink);
+  // 阴影按钮上的小方块：底色上叠一层现在的阴影色（带透明度）
+  const preview = document.getElementById("shadow-preview");
+  if (preview) preview.style.background = `linear-gradient(${shadowCSS()}, ${shadowCSS()}), ${currentTheme.bg}`;
 }
 
 // ── 中 / 英切换 ───────────────────────────────────────
@@ -543,53 +558,256 @@ function toggleLang() {
 
 // ── 配色按钮 ─────────────────────────────────────────
 
+// 收藏的自定义配色：[{ bg, ink, name }]，不限个数；没起名的显示「我的配色 N」
+const SAVED_THEMES_KEY = "pixelgraphy_saved_themes";
+function loadSavedThemes() {
+  try {
+    const list = JSON.parse(localStorage.getItem(SAVED_THEMES_KEY) || "[]");
+    return Array.isArray(list) ? list.filter((c) => c?.bg && c?.ink) : [];
+  } catch (_) {
+    return [];
+  }
+}
+function storeSavedThemes(list) {
+  try {
+    localStorage.setItem(SAVED_THEMES_KEY, JSON.stringify(list));
+  } catch (_) {}
+}
+const sameColors = (a, b) => a.bg.toLowerCase() === b.bg.toLowerCase() && a.ink.toLowerCase() === b.ink.toLowerCase();
+
+// 配色、阴影两个面板：同一时间只开一个（null / "theme" / "shadow"）
+let openPop = null;
+function setOpenPop(name) {
+  openPop = name;
+  buildThemeSwatches();
+  const panel = document.getElementById("shadow-panel");
+  const btn = document.getElementById("shadow-btn");
+  if (panel) panel.hidden = name !== "shadow";
+  if (btn) {
+    btn.setAttribute("aria-expanded", name === "shadow");
+    btn.querySelector(".caret").textContent = name === "shadow" ? "▴" : "▾";
+  }
+}
+function toggleShadowPop() {
+  setOpenPop(openPop === "shadow" ? null : "shadow");
+}
+
+// 配色：平时只有一个按钮（当前色块 + 名字），点开才出现预设、我的配色和自定义取色
+
+function paintSwatch(el, colors) {
+  el.style.background = colors.bg;
+  el.style.boxShadow = `inset 0 0 0 5px ${colors.bg}, inset 0 0 0 20px ${colors.ink}`;
+}
+
 function buildThemeSwatches() {
   const row = document.getElementById("theme-row");
   if (!row) return;
   row.innerHTML = "";
-  for (const p of THEME_PRESETS) {
+  const custom = currentTheme.id === "custom";
+  const saved = loadSavedThemes();
+  // 现在的自定义配色是不是已经收藏过（是的话高亮那个收藏，按钮变成删除）
+  const savedIndex = custom ? saved.findIndex((c) => sameColors(c, currentTheme)) : -1;
+  const savedName = (c, i) => c.name || `${t("我的配色", "My palette")} ${i + 1}`;
+  const themeName = () =>
+    currentTheme.id !== "custom"
+      ? t(currentTheme.zh, currentTheme.en)
+      : savedIndex >= 0
+        ? savedName(saved[savedIndex], savedIndex)
+        : t("自定义", "Custom");
+
+  // 开关按钮
+  const toggle = document.createElement("button");
+  toggle.className = "nes-btn theme-btn";
+  toggle.setAttribute("aria-expanded", openPop === "theme");
+  const preview = document.createElement("span");
+  preview.className = "swatch";
+  paintSwatch(preview, currentTheme);
+  const name = document.createElement("span");
+  name.className = "theme-name";
+  name.textContent = themeName();
+  const caret = document.createElement("span");
+  caret.className = "caret";
+  caret.textContent = openPop === "theme" ? "▴" : "▾";
+  toggle.append(preview, name, caret);
+  toggle.onclick = () => setOpenPop(openPop === "theme" ? null : "theme");
+  row.appendChild(toggle);
+
+  const pop = document.createElement("div");
+  pop.className = "pop-panel theme-pop";
+  pop.hidden = openPop !== "theme";
+  row.appendChild(pop);
+
+  const section = (title) => {
+    const h = document.createElement("div");
+    h.className = "theme-section-title";
+    h.textContent = title;
+    const grid = document.createElement("div");
+    grid.className = "swatch-grid";
+    pop.append(h, grid);
+    return grid;
+  };
+  const swatch = (grid, title, colors, active, onClick) => {
     const b = document.createElement("button");
-    b.className = "swatch" + (p.id === currentTheme.id ? " swatch-active" : "");
-    b.title = t(p.zh, p.en);
-    b.style.background = p.bg;
-    b.style.boxShadow = `inset 0 0 0 5px ${p.bg}, inset 0 0 0 20px ${p.ink}`;
+    b.className = "swatch" + (active ? " swatch-active" : "");
+    b.title = title;
+    b.setAttribute("aria-label", title);
+    paintSwatch(b, colors);
     b.onclick = () => {
-      setTheme(p);
+      onClick();
       buildThemeSwatches();
     };
-    row.appendChild(b);
+    grid.appendChild(b);
+  };
+
+  const presetGrid = section(t("预设", "Presets"));
+  for (const p of THEME_PRESETS) swatch(presetGrid, t(p.zh, p.en), p, p.id === currentTheme.id, () => setTheme(p));
+
+  // 收藏的配色带名字：色块 + 名字，两列排开
+  const savedGrid = section(t("我的配色", "My palettes"));
+  savedGrid.classList.add("saved-grid");
+  const chipLabels = [];
+  saved.forEach((c, i) => {
+    const b = document.createElement("button");
+    b.className = "saved-chip" + (i === savedIndex ? " saved-chip-active" : "");
+    b.title = savedName(c, i);
+    const chip = document.createElement("span");
+    chip.className = "swatch";
+    paintSwatch(chip, c);
+    const label = document.createElement("span");
+    label.className = "saved-chip-name";
+    label.textContent = savedName(c, i);
+    chipLabels.push(label);
+    b.append(chip, label);
+    b.onclick = () => {
+      setTheme({ id: "custom", bg: c.bg, ink: c.ink });
+      buildThemeSwatches();
+    };
+    savedGrid.appendChild(b);
+  });
+  if (!saved.length) {
+    const hint = document.createElement("span");
+    hint.className = "theme-hint";
+    hint.textContent = t("调好颜色后点「收藏」", "Pick colors, then Save");
+    savedGrid.appendChild(hint);
   }
 
-  // 自定义：底色 + 墨色两个取色器。只改底色时墨色自动配（suggestInk），之后可以再单独改墨色
-  const custom = currentTheme.id === "custom";
-  const picker = (title, value, onPick) => {
-    const label = document.createElement("label");
-    label.className = "swatch swatch-picker" + (custom ? " swatch-active" : "");
-    label.title = title;
-    label.style.background = value;
+  // 自定义：底色 + 墨色两个取色器，各改各的（改底色不会动墨色）
+  const customRow = document.createElement("div");
+  customRow.className = "theme-custom";
+  pop.appendChild(customRow);
+  const picker = (label, title, value, onPick) => {
+    const wrap = document.createElement("label");
+    wrap.className = "bg-label";
+    wrap.title = title;
+    const text = document.createElement("span");
+    text.textContent = label;
     const input = document.createElement("input");
     input.type = "color";
+    input.className = "color-input";
     input.value = value;
-    // 拖动取色时只更新颜色，不重建按钮（重建会把打开的取色器关掉）
+    // 拖动取色时只更新颜色，不重建面板（重建会把打开的取色器关掉）
     input.addEventListener("input", () => {
       onPick(input.value);
-      for (const el of row.children) el.classList.toggle("swatch-active", el.classList.contains("swatch-picker"));
-      bgPick.style.background = currentTheme.bg;
-      inkPick.style.background = currentTheme.ink;
+      for (const el of pop.querySelectorAll(".swatch-active, .saved-chip-active"))
+        el.classList.remove("swatch-active", "saved-chip-active");
+      paintSwatch(preview, currentTheme);
+      name.textContent = t("自定义", "Custom");
+      setAction(-1);
     });
-    label.appendChild(input);
-    row.appendChild(label);
-    return label;
+    // 取色器关掉后再按收藏状态重建一次（选回了已收藏的颜色就显示删除）
+    input.addEventListener("change", buildThemeSwatches);
+    wrap.append(text, input);
+    customRow.appendChild(wrap);
   };
-  const bgPick = picker(t("自定义底色", "Custom background"), currentTheme.bg, (bg) =>
-    setTheme({ id: "custom", bg, ink: suggestInk(bg) })
+  // 每个取色器后面一个「自动」按钮：想省事就点，按另一个颜色配一个；不点就保留自己选的
+  const auto = (label, title, makeTheme) => {
+    const b = document.createElement("button");
+    b.className = "nes-btn small-btn";
+    b.textContent = label;
+    b.title = title;
+    b.onclick = () => {
+      setTheme({ id: "custom", ...makeTheme() });
+      buildThemeSwatches();
+    };
+    customRow.appendChild(b);
+  };
+  picker(t("底色", "Bg"), t("自定义底色", "Custom background"), currentTheme.bg, (bg) =>
+    setTheme({ id: "custom", bg, ink: currentTheme.ink })
   );
-  const inkPick = picker(t("自定义墨色", "Custom ink"), currentTheme.ink, (ink) =>
+  auto(t("自动底色", "Auto bg"), t("按墨色自动配一个底色", "Pick a background that suits the ink"), () => ({
+    bg: contrastColor(currentTheme.ink),
+    ink: currentTheme.ink,
+  }));
+  picker(t("墨色", "Ink"), t("自定义墨色", "Custom ink"), currentTheme.ink, (ink) =>
     setTheme({ id: "custom", bg: currentTheme.bg, ink })
   );
-  bgPick.classList.add("swatch-bg");
-  inkPick.classList.add("swatch-ink");
+  auto(t("自动墨色", "Auto ink"), t("按底色自动配一个墨色", "Pick an ink color that suits the background"), () => ({
+    bg: currentTheme.bg,
+    ink: contrastColor(currentTheme.bg),
+  }));
+
+  // 名字 + 收藏 / 删除：自定义配色还没收藏 → 起名 + 收藏；选中的是收藏 → 改名 + 删除；选的是预设就不显示
+  const nameRow = document.createElement("div");
+  nameRow.className = "theme-name-row";
+  const nameInput = document.createElement("input");
+  nameInput.type = "text";
+  nameInput.className = "nes-input small-input";
+  nameInput.maxLength = 16;
+  nameInput.placeholder = t("起个名字", "Name it");
+  const action = document.createElement("button");
+  action.className = "nes-btn small-btn";
+  nameRow.append(nameInput, action);
+  pop.appendChild(nameRow);
+
+  const saveCurrent = () => {
+    const list = loadSavedThemes().filter((c) => !sameColors(c, currentTheme));
+    const entry = { bg: currentTheme.bg, ink: currentTheme.ink };
+    if (nameInput.value.trim()) entry.name = nameInput.value.trim();
+    list.push(entry);
+    storeSavedThemes(list);
+    buildThemeSwatches();
+  };
+  // 已收藏的配色：改完名字（回车或离开输入框）就存；只更新文字不重建面板，
+  // 不然改完名直接点「删除」时，面板先被重建，这一下点击就丢了
+  const rename = (i) => {
+    const list = loadSavedThemes();
+    if (!list[i]) return;
+    const v = nameInput.value.trim();
+    if (v) list[i].name = v;
+    else delete list[i].name;
+    storeSavedThemes(list);
+    saved[i] = list[i];
+    name.textContent = chipLabels[i].textContent = chipLabels[i].parentElement.title = savedName(list[i], i);
+  };
+  const setAction = (i) => {
+    nameRow.hidden = currentTheme.id !== "custom";
+    nameInput.value = i >= 0 ? saved[i].name || "" : "";
+    nameInput.onchange = i >= 0 ? () => rename(i) : null;
+    nameInput.onkeydown = (e) => {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      if (i >= 0) nameInput.blur();
+      else saveCurrent();
+    };
+    action.textContent = i >= 0 ? t("× 删除", "× Delete") : t("★ 收藏", "★ Save");
+    action.onclick =
+      i >= 0
+        ? () => {
+            storeSavedThemes(loadSavedThemes().filter((_, j) => j !== i));
+            buildThemeSwatches();
+          }
+        : saveCurrent;
+  };
+  setAction(savedIndex);
 }
+
+// 点面板外面或按 Esc 收起面板
+document.addEventListener("pointerdown", (e) => {
+  if (openPop && !e.target.closest("#style-row")) setOpenPop(null);
+});
+document.addEventListener("keydown", (e) => {
+  if (openPop && e.key === "Escape") setOpenPop(null);
+});
 
 document.addEventListener("DOMContentLoaded", () => {
   const input = document.getElementById("text-input");
@@ -635,6 +853,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const sparkleToggle = document.getElementById("sparkle-toggle");
   sparkleToggle.checked = sparkleOn;
   sparkleToggle.addEventListener("change", (e) => setSparkle(e.target.checked));
+  const glitchToggle = document.getElementById("glitch-toggle");
+  glitchToggle.checked = glitchSeed > 0;
+  glitchToggle.addEventListener("change", (e) => setGlitch(e.target.checked));
   syncShadowInputs();
 
   const sizeInput = document.getElementById("grid-size");

@@ -8,11 +8,28 @@ const _THEME_KEY = "pixelgraphy_theme";
 const THEME_PRESETS = [
   { id: "gameboy", zh: "原版灰绿", en: "GameBoy", bg: "#a9b0a2", ink: "#283023" },
   { id: "sakura", zh: "樱花粉", en: "Sakura", bg: "#e3b9c0", ink: "#4a2230" },
-  { id: "deepsea", zh: "深海蓝", en: "Deep Sea", bg: "#9fb3c2", ink: "#1c2a38" },
-  { id: "amber", zh: "琥珀橙", en: "Amber", bg: "#d9b27c", ink: "#3d2610" },
-  { id: "lavender", zh: "薰衣草", en: "Lavender", bg: "#b9b0d0", ink: "#2c2440" },
   { id: "paper", zh: "旧报纸", en: "Newsprint", bg: "#e4dfd2", ink: "#2a2a2a" },
   { id: "night", zh: "夜间", en: "Night", bg: "#23281f", ink: "#c8d4b8" },
+  // 跳色 / 对比色：底色和墨色取互补或撞色，对比度都在 4.5 以上
+  { id: "pinkgreen", zh: "粉配绿", en: "Pink & Green", bg: "#f4a7c0", ink: "#164a2d" },
+  { id: "klein", zh: "克莱因蓝", en: "Klein & Yellow", bg: "#2342b8", ink: "#f5d547" },
+  { id: "tomato", zh: "番茄配藏青", en: "Tomato & Navy", bg: "#f26b4b", ink: "#16245e" },
+  { id: "lemon", zh: "柠檬配紫", en: "Lemon & Purple", bg: "#efe35a", ink: "#4a2a8a" },
+  { id: "mint", zh: "薄荷配红", en: "Mint & Red", bg: "#a6e3c8", ink: "#a3122f" },
+  { id: "orangeblue", zh: "橙配蓝", en: "Orange & Blue", bg: "#ffa94d", ink: "#123c73" },
+  { id: "skyrust", zh: "天蓝配橙", en: "Sky & Rust", bg: "#9ad0ec", ink: "#8a2d0a" },
+  { id: "coralteal", zh: "珊瑚配青", en: "Coral & Teal", bg: "#ff8a7a", ink: "#0a3d3d" },
+  { id: "mustard", zh: "芥末配宝蓝", en: "Mustard & Royal", bg: "#e0b83e", ink: "#1b2f8f" },
+  { id: "lilac", zh: "丁香配橄榄", en: "Lilac & Olive", bg: "#d6c4ee", ink: "#3d4a12" },
+  { id: "cream", zh: "奶白配红", en: "Cream & Red", bg: "#f6efe2", ink: "#c81e1e" },
+  { id: "cyanmagenta", zh: "青配洋红", en: "Cyan & Magenta", bg: "#3fd0c9", ink: "#7a0a4f" },
+  { id: "hazard", zh: "黄配黑", en: "Yellow & Black", bg: "#ffd400", ink: "#1a1a1a" },
+  { id: "redcream", zh: "红配奶白", en: "Red & Cream", bg: "#c8102e", ink: "#fff1d6" },
+  { id: "purpleyellow", zh: "紫配黄", en: "Purple & Yellow", bg: "#5b2a86", ink: "#ffd23f" },
+  { id: "forestpink", zh: "墨绿配粉", en: "Forest & Pink", bg: "#1f5c45", ink: "#ffb3c7" },
+  { id: "winemint", zh: "酒红配薄荷", en: "Wine & Mint", bg: "#6b1530", ink: "#a8f0d0" },
+  { id: "blackpink", zh: "黑配粉", en: "Black & Pink", bg: "#1a1a1a", ink: "#ff8fb8" },
+  { id: "acid", zh: "黑配荧光绿", en: "Black & Acid", bg: "#151515", ink: "#b6ff3b" },
 ];
 
 const _hexToRgb = (hex) => {
@@ -48,9 +65,10 @@ function themePalette(bgHex, inkHex) {
   };
 }
 
-// 自定义只选了底色时，自动配一个同色相的墨色（底色浅 → 很深的墨；底色深 → 很浅的墨）
-function suggestInk(bgHex) {
-  const [r, g, b] = _hexToRgb(bgHex).map((v) => v / 255);
+// 「自动底色」「自动墨色」按钮：按另一个颜色配一个同色相、深浅相反的颜色。
+// 很深、很浅两个候选都算出来，挑和原色对比度更高的那个（紫、红这类中间亮度的颜色单看明暗容易挑错）
+function contrastColor(hex) {
+  const [r, g, b] = _hexToRgb(hex).map((v) => v / 255);
   const max = Math.max(r, g, b), min = Math.min(r, g, b);
   const l = (max + min) / 2;
   let h = 0, s = 0;
@@ -60,19 +78,34 @@ function suggestInk(bgHex) {
     h = max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
     h /= 6;
   }
-  const targetL = l > 0.45 ? 0.15 : 0.82;
   const targetS = Math.min(s, 0.35);
   // HSL → RGB
-  const q = targetL < 0.5 ? targetL * (1 + targetS) : targetL + targetS - targetL * targetS;
-  const p = 2 * targetL - q;
-  const hue = (t) => {
-    t = (t + 1) % 1;
-    if (t < 1 / 6) return p + (q - p) * 6 * t;
-    if (t < 1 / 2) return q;
-    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
-    return p;
+  const fromHsl = (targetL) => {
+    const q = targetL < 0.5 ? targetL * (1 + targetS) : targetL + targetS - targetL * targetS;
+    const p = 2 * targetL - q;
+    const hue = (t) => {
+      t = (t + 1) % 1;
+      if (t < 1 / 6) return p + (q - p) * 6 * t;
+      if (t < 1 / 2) return q;
+      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+      return p;
+    };
+    return _rgbToHex([hue(h + 1 / 3), hue(h), hue(h - 1 / 3)].map((v) => v * 255));
   };
-  return _rgbToHex([hue(h + 1 / 3), hue(h), hue(h - 1 / 3)].map((v) => v * 255));
+  // WCAG 对比度
+  const lum = (x) => {
+    const [R, G, B] = _hexToRgb(x).map((v) => {
+      v /= 255;
+      return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * R + 0.7152 * G + 0.0722 * B;
+  };
+  const contrast = (x) => {
+    const [lo, hi] = [lum(x), lum(hex)].sort((m, n) => m - n);
+    return (hi + 0.05) / (lo + 0.05);
+  };
+  const dark = fromHsl(0.15), light = fromHsl(0.85);
+  return contrast(dark) >= contrast(light) ? dark : light;
 }
 
 // 现在的配色：{ id, bg, ink }（id 是预设名或 "custom"）

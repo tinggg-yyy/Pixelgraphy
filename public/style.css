@@ -46,7 +46,10 @@ body {
   overscroll-behavior: none;
 }
 
+/* 整页至少一屏高，内容在里面上下撑开 */
 main {
+  min-height: 100vh;
+  min-height: 100dvh;
   max-width: 720px;
   margin: 0 auto;
   padding: 16px 16px calc(24px + env(safe-area-inset-bottom));
@@ -82,13 +85,142 @@ h1 {
   margin-left: auto;
 }
 
-/* 配色单独一行，靠左 */
-#theme-row {
+/* 配色、阴影：两个按钮一行，点开是浮在页面上的面板（不挤动下面的画布），面板相对这一行定位 */
+#style-row {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  align-items: center;
+  gap: 8px;
   width: 100%;
-  justify-content: flex-start;
+}
+#theme-row {
+  display: flex;
+  min-width: 0;
+}
+.nes-btn.theme-btn,
+.nes-btn.pop-btn {
+  gap: 8px;
+  max-width: 100%;
+  margin: 0;
+  padding: 4px 10px 4px 6px !important;
+  white-space: nowrap;
+}
+.theme-btn .theme-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.theme-btn .swatch,
+.pop-btn .swatch {
+  flex: none;
+  cursor: inherit;
+}
+.pop-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 20;
+  width: min(320px, calc(100vw - 32px));
+  max-height: min(70vh, 560px);
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background-color: var(--c-bg);
+  background-image: var(--grid-bg);
+  border: var(--btn-border);
+  border-radius: 2px;
+  box-shadow: 3px 4px 0 rgb(var(--ink-rgb) / 0.30);
+}
+.pop-panel[hidden] {
+  display: none;
+}
+.theme-section-title {
+  font-size: 13px;
+  opacity: 0.75;
+}
+.theme-section-title:not(:first-child) {
+  margin-top: 6px;
+}
+/* 色块排成整齐的网格，一格一个，不叠在一起 */
+.swatch-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 28px);
+  gap: 8px;
+}
+.swatch-grid .swatch {
+  width: 28px;
+  height: 28px;
+}
+.theme-hint {
+  grid-column: 1 / -1;
+  font-size: 13px;
+  opacity: 0.6;
+}
+/* 自定义：底色、墨色各一行，取色器在左，「自动」按钮靠右 */
+.theme-custom {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px 14px;
+  margin-top: 6px;
+  padding-top: 12px;
+  border-top: 1px dashed rgb(var(--line-rgb) / 0.4);
+}
+.theme-custom .nes-btn {
+  margin: 0;
+}
+/* 起名 + 收藏 / 删除 */
+.theme-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.theme-name-row[hidden] {
+  display: none;
+}
+.theme-name-row .nes-input {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 16px; /* iOS 低于 16px 会自动放大页面 */
+}
+.theme-name-row .nes-btn {
+  flex: none;
+  margin: 0;
+}
+/* 收藏的配色：色块 + 名字，两列 */
+.swatch-grid.saved-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.saved-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 3px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: none;
+  color: var(--c-text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.saved-chip .swatch {
+  flex: none;
+  cursor: inherit;
+}
+.saved-chip-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.saved-chip-active {
+  border-color: var(--c-text);
 }
 
 .nes-btn.lang-btn {
@@ -111,10 +243,13 @@ h1 {
   outline-offset: 2px;
 }
 
+/* 手机竖屏：配色阴影滤镜贴顶、工具贴底，画布在中间；14px 是最小间距 */
 .pixeldraw {
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: space-between;
   gap: 14px;
   width: 100%;
 }
@@ -138,6 +273,23 @@ h1 {
   -webkit-user-select: none;
   user-select: none;
   cursor: crosshair;
+}
+
+/* 竖屏：样式、格式、保存放在同一行，样式下拉框占剩下的宽度 */
+#tools .tool-row:last-child {
+  flex-wrap: nowrap;
+}
+#tools .tool-row:last-child .bg-label:first-child {
+  flex: 1;
+  min-width: 0;
+}
+#tools .tool-row:last-child .bg-label:first-child select {
+  flex: 1;
+  min-width: 0;
+}
+#tools .tool-row:last-child > .nes-btn {
+  flex: none;
+  margin: 0;
 }
 
 #tools {
@@ -234,57 +386,24 @@ h1 {
   margin: 0;
 }
 
-/* 自定义取色器：方块本身就是当前颜色，点开系统取色器 */
-.swatch-picker {
-  position: relative;
-  display: inline-block;
-  overflow: hidden;
-}
-.swatch-picker input {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0;
-  cursor: pointer;
-  border: 0;
-  padding: 0;
-}
-/* 底色取色器带个 + 号，墨色取色器是个小圆点，和预设区分开 */
-.swatch-bg::after,
-.swatch-ink::after {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-  color: var(--c-text);
-  font-size: 14px;
-  line-height: 1;
-}
-.swatch-bg::after {
-  content: "+";
-}
-.swatch-ink::after {
-  content: "";
-  margin: auto;
-  width: 8px;
-  height: 8px;
-  inset: 6px;
-  background: var(--c-bg);
-}
-
-/* 阴影设置：在配色下面、画布上面。3 列网格，每行平均分开 */
+/* 阴影面板：标题和重置在第一行，其余每项一整行 */
 #shadow-panel {
-  width: 100%;
   display: grid;
-  grid-template-columns: auto 1fr 1fr;
+  grid-template-columns: 1fr auto;
   align-items: center;
-  gap: 8px 16px;
+  gap: 16px 8px;
+  width: min(280px, calc(100vw - 32px));
 }
-#shadow-panel .bg-label:not(.shadow-title) {
+#shadow-panel[hidden] {
+  display: none;
+}
+#shadow-panel label.bg-label {
+  grid-column: 1 / -1;
   min-width: 0;
+}
+#shadow-panel label.bg-label > span {
+  width: 4.5em;
+  flex: none;
 }
 #shadow-panel input[type="range"] {
   flex: 1;
@@ -340,21 +459,32 @@ h1 {
   gap: 8px 16px;
 }
 
-/* ── 电脑 / iPad 横屏：左栏（配色、阴影）· 画布居中 · 右栏（工具、写字、导出） ── */
+/* ── 电脑 / iPad 横屏：左栏（配色、阴影、滤镜）· 画布居中 · 右栏（工具、写字、导出） ── */
 @media (min-width: 900px) and (orientation: landscape) {
+  /* 画布边长 = 一屏高度减去上下留白和顶栏；两边栏分剩下的宽度。
+     88px = 上下 padding 14+14 + 顶栏 40 + 顶栏下间距 12 + 画框边框和外阴影 8，和 sketch.js 的 canvasSize 对应 */
   main {
-    max-width: 1440px;
-    padding: 16px 28px 24px;
+    --canvas-s: calc(100vh - 88px);
+    --gap: 24px;
+    max-width: none;
+    padding: 14px 24px;
+  }
+  @supports (height: 100dvh) {
+    main {
+      --canvas-s: calc(100dvh - 88px);
+    }
   }
   header {
-    margin-bottom: 16px;
+    margin-bottom: 12px;
   }
 
   .pixeldraw {
+    --side: clamp(170px, calc((100vw - 48px - 2 * var(--gap) - var(--canvas-s) - 8px) / 2), 230px);
+    flex: none; /* 高度跟着画布走，不再撑满 main，免得两边栏比画布长 */
     display: grid;
-    grid-template-columns: 260px minmax(0, 1fr) 260px;
-    align-items: start;
-    gap: 28px;
+    grid-template-columns: var(--side) minmax(0, 1fr) var(--side);
+    align-items: stretch; /* 两边栏和画布一样高 */
+    gap: var(--gap);
   }
   #canvas-col {
     display: flex;
@@ -362,62 +492,94 @@ h1 {
     min-width: 0;
   }
 
+  /* 各组在整栏高度里上下撑开：第一组贴顶、最后一组贴底，30px 是最小间距 */
   #left-panel,
   #tools {
-    gap: 18px;
+    justify-content: space-between;
+    gap: 30px;
   }
   #tools {
     max-width: none;
   }
 
-  /* 阴影：标题和重置在第一行，其余每项一整行 */
-  #shadow-panel {
-    grid-template-columns: 1fr auto;
-    gap: 14px 8px;
+  /* 配色、阴影按钮在窄栏里上下排、撑满整栏 */
+  #style-row {
+    flex-direction: column;
+    align-items: stretch;
   }
-  #shadow-panel .shadow-title {
-    grid-row: 1;
-    grid-column: 1;
+  #theme-row .theme-btn {
+    flex: 1;
   }
-  #shadow-panel .small-btn {
-    grid-row: 1;
-    grid-column: 2;
+  .nes-btn.theme-btn,
+  .nes-btn.pop-btn {
+    justify-content: flex-start;
   }
-  #shadow-panel label.bg-label {
-    grid-column: 1 / -1;
-  }
-  #shadow-panel label.bg-label > span {
-    width: 4.5em;
-    flex: none;
+  .pop-btn .caret,
+  .theme-btn .caret {
+    margin-left: auto;
   }
 
-  /* 工具按钮 2×2；滤镜和导出的下拉框每个一行、标签左对齐、框靠右 */
+  /* 工具按钮 2×2 */
   #tools .tool-row:first-child {
     display: grid;
     grid-template-columns: 1fr 1fr;
+    gap: 10px;
   }
   #tools .tool-row:first-child .nes-btn {
     margin: 0;
   }
+
+  /* 滤镜和导出：每项一行；下拉框在标签下面撑满整栏，窄栏也放得下 */
   #filter-row,
   #tools .tool-row:last-child {
     flex-direction: column;
     align-items: stretch;
-    gap: 12px;
+    gap: 18px;
   }
-  #filter-row .bg-label,
+  #filter-row .bg-label:has(> select),
   #tools .tool-row:last-child .bg-label {
-    justify-content: space-between;
-  }
-  /* 闪粉的勾选框在文字前面，反过来让它和下拉框一样靠右 */
-  #filter-row .bg-label:has(> input[type="checkbox"]) {
-    flex-direction: row-reverse;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
   }
   #filter-row select,
   #tools .tool-row:last-child select {
-    width: 150px;
+    width: 100%;
+  }
+  /* NES.css 给 .nes-input 加了外边距，窄栏里会往右凸出去 */
+  #left-panel .nes-input,
+  #tools .nes-input {
+    margin: 0;
+  }
+  /* 闪粉：文字在左，勾选框靠右 */
+  #filter-row .bg-label:has(> input[type="checkbox"]) {
+    flex-direction: row-reverse;
+    justify-content: space-between;
   }
   #tools .tool-row:last-child > .nes-btn {
-    margin: 4px 0 0;
+    margin: 6px 0 0;
   }
+}
+
+/* ── 按钮和输入框里的字居中 ──
+   Zpix 的字形在字框里偏左（右边留白约 0.14em），按钮里看起来整体往左偏；
+   text-indent 让这一行多出 0.28em，居中后正好往右补回 0.14em */
+.nes-btn,
+.nes-input,
+select {
+  text-align: center;
+  text-align-last: center; /* 下拉框里选中的那项也居中 */
+  text-indent: 0.28em;
+}
+.nes-input::placeholder {
+  text-align: center;
+}
+/* 配色按钮里是色块 + 名字，按顺序排就行，不补偏移 */
+.nes-btn.theme-btn,
+.nes-btn.theme-btn * {
+  text-indent: 0;
+}
+/* 下拉框右边有箭头，字只在剩下的地方居中；左边多留一点，让字在整个框里居中 */
+select.nes-input.small-input {
+  padding-left: 14px !important;
 }

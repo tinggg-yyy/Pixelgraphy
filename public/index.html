@@ -32,23 +32,28 @@
       <!-- 手机竖屏：从上到下排；电脑 / iPad 横屏：左栏 · 画布 · 右栏 -->
       <section class="pixeldraw">
         <aside id="left-panel">
-          <div id="theme-row" data-zh-aria="配色" data-en-aria="Theme"></div>
-          <!-- 3 列网格：第一列是「阴影」标题和重置，后两列放调节项，上下对齐、平均分宽 -->
-          <div id="shadow-panel">
-            <span class="bg-label shadow-title" data-zh="阴影" data-en="Shadow"></span>
-            <label class="bg-label"><span data-zh="颜色" data-en="Color"></span>
-              <input id="shadow-color" type="color" class="color-input" />
-            </label>
-            <label class="bg-label"><span data-zh="透明度" data-en="Opacity"></span>
-              <input id="shadow-alpha" type="range" min="0" max="1" step="0.05" />
-            </label>
-            <button class="nes-btn small-btn" onclick="resetShadow()" data-zh="重置" data-en="Reset"></button>
-            <label class="bg-label"><span data-zh="左右" data-en="X"></span>
-              <input id="shadow-x" type="range" min="-0.5" max="0.5" step="0.05" />
-            </label>
-            <label class="bg-label"><span data-zh="上下" data-en="Y"></span>
-              <input id="shadow-y" type="range" min="-0.5" max="0.5" step="0.05" />
-            </label>
+          <!-- 配色和阴影都是按钮，点开是浮在页面上的面板（面板相对这一行定位） -->
+          <div id="style-row">
+            <div id="theme-row" data-zh-aria="配色" data-en-aria="Theme"></div>
+            <button class="nes-btn pop-btn" id="shadow-btn" onclick="toggleShadowPop()" aria-expanded="false">
+              <span class="swatch" id="shadow-preview"></span><span data-zh="阴影" data-en="Shadow"></span><span class="caret">▾</span>
+            </button>
+            <div id="shadow-panel" class="pop-panel" hidden>
+              <span class="bg-label shadow-title" data-zh="阴影" data-en="Shadow"></span>
+              <button class="nes-btn small-btn" onclick="resetShadow()" data-zh="重置" data-en="Reset"></button>
+              <label class="bg-label"><span data-zh="颜色" data-en="Color"></span>
+                <input id="shadow-color" type="color" class="color-input" />
+              </label>
+              <label class="bg-label"><span data-zh="透明度" data-en="Opacity"></span>
+                <input id="shadow-alpha" type="range" min="0" max="1" step="0.05" />
+              </label>
+              <label class="bg-label"><span data-zh="左右" data-en="X"></span>
+                <input id="shadow-x" type="range" min="-0.5" max="0.5" step="0.05" />
+              </label>
+              <label class="bg-label"><span data-zh="上下" data-en="Y"></span>
+                <input id="shadow-y" type="range" min="-0.5" max="0.5" step="0.05" />
+              </label>
+            </div>
           </div>
           <!-- 滤镜：屏幕上只作用在画框里，导出时覆盖整张图 -->
           <div id="filter-row">
@@ -65,6 +70,7 @@
               </select>
             </label>
             <label class="bg-label"><input type="checkbox" id="sparkle-toggle" /><span data-zh="闪粉" data-en="Sparkle"></span></label>
+            <label class="bg-label"><input type="checkbox" id="glitch-toggle" /><span data-zh="故障" data-en="Glitch"></span></label>
           </div>
         </aside>
 
@@ -83,7 +89,7 @@
             <button class="nes-btn" onclick="setClear()" data-zh="清空" data-en="Clear"></button>
           </div>
           <div class="tool-row">
-            <input id="text-input" class="nes-input" type="text" data-zh-placeholder="输入文字，用字来画" data-en-placeholder="Type to draw with words" />
+            <input id="text-input" class="nes-input" type="text" data-zh-placeholder="用字来画" data-en-placeholder="Draw with words" />
           </div>
           <div class="tool-row">
             <label class="bg-label"><span data-zh="样式" data-en="Style"></span>

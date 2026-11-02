@@ -442,3 +442,63 @@ function applyScreenFilter(el, id, unit, sparkle = false) {
     layer(`background-image:url(${_tileURL.sparkle});background-size:${size}px ${size}px;mix-blend-mode:screen`);
   }
 }
+
+// ── 故障 ─────────────────────────────────────────────
+// 和闪粉一样是单独的开关，能叠在任何滤镜上。先在画面上做故障，再套滤镜。
+// 位置、宽度都按画面比例算，种子固定：屏幕上看到的和导出的是同一套故障
+function applyGlitch(canvas, seed) {
+  const W = canvas.width, H = canvas.height;
+  const r = _rng(seed);
+  const ctx = canvas.getContext("2d");
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = "source-over";
+
+  // 1. 错位条：横着切几条，左右挪开，挪出去的部分从另一边绕回来
+  const [snap, sctx] = _tmp("glitchSnap", W, H);
+  sctx.drawImage(canvas, 0, 0);
+  const shifts = 5 + Math.floor(r() * 4);
+  for (let i = 0; i < shifts; i++) {
+    const h = Math.max(1, Math.round(H * (0.008 + r() * 0.05)));
+    const y = Math.round(r() * (H - h));
+    const dir = r() < 0.5 ? -1 : 1;
+    const dx = Math.round(dir * W * (0.01 + r() * 0.06));
+    ctx.clearRect(0, y, W, h);
+    ctx.drawImage(snap, 0, y, W, h, dx, y, W, h);
+    ctx.drawImage(snap, 0, y, W, h, dx - dir * W, y, W, h);
+  }
+
+  // 2. 色偏条：几条里红、青通道往两边分开
+  const splits = 2 + Math.floor(r() * 2);
+  for (let i = 0; i < splits; i++) {
+    const h = Math.max(2, Math.round(H * (0.02 + r() * 0.06)));
+    const y = Math.round(r() * (H - h));
+    const d = Math.max(1, Math.round(W * (0.004 + r() * 0.01)));
+    const [band, bctx] = _tmp("glitchBand", W, h);
+    bctx.drawImage(canvas, 0, y, W, h, 0, 0, W, h);
+    const red = _channel("glitchR", band, "#ff0000");
+    const cyan = _channel("glitchC", band, "#00ffff");
+    ctx.clearRect(0, y, W, h);
+    ctx.globalCompositeOperation = "lighter";
+    // 和错位条一样从另一边绕回来，不然左右边缘只剩一个通道，露出纯红 / 纯青的竖块
+    ctx.drawImage(red, d, y);
+    ctx.drawImage(red, d - W, y);
+    ctx.drawImage(cyan, -d, y);
+    ctx.drawImage(cyan, W - d, y);
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+  // 3. 几根细亮线
+  const lines = 2 + Math.floor(r() * 3);
+  const colors = ["#ffffff", "#5ff6ff", "#ff4fd8"];
+  for (let i = 0; i < lines; i++) {
+    const lh = Math.max(1, Math.round(H * (0.0015 + r() * 0.002)));
+    const x = Math.round(r() * W * 0.6);
+    const w = Math.round(W * (0.2 + r() * 0.5));
+    ctx.globalAlpha = 0.45 + r() * 0.25;
+    ctx.fillStyle = colors[Math.floor(r() * colors.length)];
+    ctx.fillRect(x, Math.round(r() * H), w, lh);
+  }
+  ctx.restore();
+}
