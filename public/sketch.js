@@ -28,10 +28,21 @@ function shadowCSS() {
 const PIXEL_ALPHA = { 1: 65, 2: 125, 3: 190, 4: 255 };
 const TEXT_ALPHA = { "#1": 65, "#2": 125, "#3": 190, "#4": 255 };
 
+// 电脑 / iPad 横屏：三栏布局（和 style.css 里的媒体查询一致）
+const WIDE_QUERY = "(min-width: 900px) and (orientation: landscape)";
+
 function canvasSize() {
-  const tools = document.getElementById("tools");
   const header = document.querySelector("header");
-  const reserved = (tools?.offsetHeight || 140) + (header?.offsetHeight || 60) + 60;
+  const headerH = header?.offsetHeight || 60;
+  if (window.matchMedia(WIDE_QUERY).matches) {
+    // 画布填满中间那栏，高度不超过一屏；减掉的是边框和外阴影
+    const col = document.getElementById("canvas-col");
+    const colW = (col?.clientWidth || windowWidth - 600) - 12;
+    return Math.floor(Math.max(200, Math.min(colW, windowHeight - headerH - 64, 960)));
+  }
+  const tools = document.getElementById("tools");
+  const left = document.getElementById("left-panel");
+  const reserved = (tools?.offsetHeight || 140) + headerH + (left?.offsetHeight || 0) + 60;
   return Math.floor(Math.max(200, Math.min(windowWidth * 0.9, windowHeight - reserved, 640)));
 }
 
