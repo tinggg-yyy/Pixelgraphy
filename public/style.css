@@ -73,9 +73,29 @@ h1 {
   text-shadow: 2px 2px 0 rgb(var(--ink-rgb) / 0.25);
 }
 
+.header-right {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-left: auto;
+}
+
+/* 配色单独一行，靠左 */
 #theme-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.nes-btn.lang-btn {
+  min-width: 40px;
+  height: 40px;
+  margin: 0;
+  padding: 0 8px !important;
 }
 
 .swatch {
@@ -184,9 +204,125 @@ h1 {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  margin: 0; /* NES.css 给 label 加了 margin-bottom，会把整行顶高 */
+  line-height: 1;
   font-size: 14px;
   cursor: pointer;
 }
 .bg-label input {
   accent-color: var(--c-text);
+}
+
+.small-input {
+  width: auto;
+  padding: 4px 6px !important;
+}
+/* 像素数：小正方形，去掉上下箭头 */
+#grid-size {
+  width: 40px;
+  height: 40px;
+  margin: 0;
+  padding: 0 !important;
+  text-align: center;
+  font-size: 16px; /* iOS 低于 16px 会自动放大页面 */
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+#grid-size::-webkit-inner-spin-button,
+#grid-size::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* 自定义取色器：方块本身就是当前颜色，点开系统取色器 */
+.swatch-picker {
+  position: relative;
+  display: inline-block;
+  overflow: hidden;
+}
+.swatch-picker input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  border: 0;
+  padding: 0;
+}
+/* 底色取色器带个 + 号，墨色取色器是个小圆点，和预设区分开 */
+.swatch-bg::after,
+.swatch-ink::after {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  color: var(--c-text);
+  font-size: 14px;
+  line-height: 1;
+}
+.swatch-bg::after {
+  content: "+";
+}
+.swatch-ink::after {
+  content: "";
+  margin: auto;
+  width: 8px;
+  height: 8px;
+  inset: 6px;
+  background: var(--c-bg);
+}
+
+/* 阴影设置：在配色下面、画布上面。3 列网格，每行平均分开 */
+#shadow-panel {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto 1fr 1fr;
+  align-items: center;
+  gap: 8px 16px;
+}
+#shadow-panel .bg-label:not(.shadow-title) {
+  min-width: 0;
+}
+#shadow-panel input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  accent-color: var(--c-text);
+}
+#shadow-panel .nes-btn {
+  margin: 0;
+}
+.color-input {
+  width: 28px;
+  height: 22px;
+  padding: 0;
+  border: var(--btn-border);
+  border-radius: 2px;
+  background: none;
+  cursor: pointer;
+}
+.color-input::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+.color-input::-webkit-color-swatch {
+  border: none;
+}
+.nes-btn.small-btn {
+  padding: 4px 8px !important;
+  font-size: 13px !important;
+}
+
+/* 屏幕滤镜：套在画框外面这一层；颗粒 / 色调图层盖在画框上，不挡画画 */
+#canvas-fx {
+  position: relative;
+  line-height: 0;
+}
+/* 不能加 z-index：会让这层自成一个混合组，里面的颗粒就只和透明底混，不和画面混了 */
+#fx-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 }
