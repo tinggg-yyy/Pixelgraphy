@@ -1,0 +1,192 @@
+@font-face {
+  font-family: "Zpix";
+  src: url("fonts/zpix.ttf") format("truetype");
+  font-display: swap;
+}
+
+/* 默认配色（theme.js 会按选中的配色覆盖这些变量） */
+:root {
+  --c-bg: #a9b0a2;
+  --c-text: #283023;
+  --ink-rgb: 40 48 35;
+  --line-rgb: 55 63 48;
+  --btn-raised:
+    inset -2px -2px 0 rgb(var(--line-rgb) / 0.30),
+    inset 2px 2px 0 rgba(255, 255, 255, 0.18),
+    1px 2px 0 rgb(var(--ink-rgb) / 0.28);
+  --btn-pressed:
+    inset 2px 2px 0 rgba(0, 0, 0, 0.18),
+    inset -1px -1px 0 rgba(255, 255, 255, 0.10);
+  --btn-border: 1px solid rgb(var(--line-rgb) / 0.55);
+  --grid-bg:
+    repeating-linear-gradient(0deg, rgb(var(--ink-rgb) / 0.07) 0px, rgb(var(--ink-rgb) / 0.07) 1px, transparent 1px, transparent 4px),
+    repeating-linear-gradient(90deg, rgb(var(--ink-rgb) / 0.07) 0px, rgb(var(--ink-rgb) / 0.07) 1px, transparent 1px, transparent 4px);
+  --grid-dark:
+    repeating-linear-gradient(0deg, rgb(var(--ink-rgb) / 0.16) 0px, rgb(var(--ink-rgb) / 0.16) 1px, transparent 1px, transparent 4px),
+    repeating-linear-gradient(90deg, rgb(var(--ink-rgb) / 0.16) 0px, rgb(var(--ink-rgb) / 0.16) 1px, transparent 1px, transparent 4px);
+}
+
+* {
+  box-sizing: border-box;
+  font-family: "Zpix", monospace;
+  image-rendering: pixelated;
+  -webkit-font-smoothing: none;
+}
+
+html {
+  min-height: 100%;
+  background: var(--c-bg);
+  background-image: var(--grid-bg);
+}
+
+body {
+  margin: 0;
+  color: var(--c-text);
+  background: transparent;
+  overscroll-behavior: none;
+}
+
+main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 16px 16px calc(24px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+header {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 22px;
+  letter-spacing: 3px;
+  font-weight: normal;
+  text-shadow: 2px 2px 0 rgb(var(--ink-rgb) / 0.25);
+}
+
+#theme-row {
+  display: flex;
+  gap: 6px;
+}
+
+.swatch {
+  width: 22px;
+  height: 22px;
+  border: var(--btn-border);
+  border-radius: 2px;
+  padding: 0;
+  cursor: pointer;
+}
+.swatch-active {
+  outline: 2px solid var(--c-text);
+  outline-offset: 2px;
+}
+
+.pixeldraw {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+}
+
+#p5-canvas-container {
+  position: relative;
+  border: 2px solid rgb(var(--line-rgb) / 0.45);
+  box-shadow:
+    0 0 0 1px rgb(var(--line-rgb) / 0.5),
+    inset 2px 2px 0 rgba(0, 0, 0, 0.10),
+    inset -1px -1px 0 rgba(255, 255, 255, 0.12),
+    3px 4px 0 rgb(var(--ink-rgb) / 0.30);
+  background: var(--c-bg);
+  line-height: 0;
+}
+
+/* 手指在画框里只画图，不滚动页面 */
+#p5-canvas-container,
+#p5-canvas-container canvas {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: crosshair;
+}
+
+#tools {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 640px;
+}
+
+.tool-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+}
+
+/* NES 按钮改成透明底 + 细边框 + 凸起阴影（和 Predate 一致） */
+.nes-btn {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  border-radius: 2px !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  color: var(--c-text) !important;
+  border: var(--btn-border) !important;
+  box-shadow: var(--btn-raised) !important;
+  border-image: none !important;
+  padding: 6px 10px !important;
+  font-size: 14px !important;
+  letter-spacing: 1px;
+  transition: box-shadow 0.08s, transform 0.08s;
+}
+.nes-btn::before,
+.nes-btn::after {
+  display: none !important;
+}
+
+.nes-btn:active,
+.tool-active {
+  background-color: rgb(var(--line-rgb) / 0.20) !important;
+  background-image: var(--grid-dark) !important;
+  box-shadow: var(--btn-pressed) !important;
+  transform: translate(1px, 2px);
+}
+
+.nes-input {
+  width: 100%;
+  background-color: var(--c-bg);
+  color: var(--c-text);
+  border-image: none !important;
+  border: 2px solid rgb(var(--line-rgb) / 0.45) !important;
+  border-radius: 2px !important;
+  padding: 8px 10px !important;
+  font-size: 16px; /* iOS 低于 16px 会自动放大页面 */
+}
+.nes-input::placeholder {
+  color: rgb(var(--ink-rgb) / 0.55);
+}
+
+.bg-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.bg-label input {
+  accent-color: var(--c-text);
+}

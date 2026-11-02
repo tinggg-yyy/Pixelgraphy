@@ -1,0 +1,12 @@
+{
+  "name": "pixelgraphy",
+  "version": "1.0.0",
+  "description": "32×32 pixel drawing board, extracted from Predate",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0"
+  }
+}
