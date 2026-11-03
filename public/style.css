@@ -267,6 +267,175 @@ h1 {
   border-color: var(--c-text);
 }
 
+/* 图库按钮：和像素框、语言按钮一样高；图标是 2×2 四个小方块（像四张小图） */
+.nes-btn.gallery-btn {
+  gap: 6px;
+  height: 32px;
+  margin: 0;
+  padding: 0 8px !important;
+  font-size: 13px !important;
+  text-indent: 0;
+}
+.gallery-icon {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  background:
+    linear-gradient(var(--c-text), var(--c-text)) 0 0 / 5px 5px no-repeat,
+    linear-gradient(var(--c-text), var(--c-text)) 7px 0 / 5px 5px no-repeat,
+    linear-gradient(var(--c-text), var(--c-text)) 0 7px / 5px 5px no-repeat,
+    linear-gradient(var(--c-text), var(--c-text)) 7px 7px / 5px 5px no-repeat;
+}
+/* 更窄的手机（iPhone SE / mini 这类 375 宽）：英文时顶栏还是挤，标题和间距再收紧一点 */
+@media (max-width: 380px) {
+  header {
+    gap: 8px;
+  }
+  h1 {
+    font-size: 20px;
+    letter-spacing: 2px;
+  }
+  .header-right {
+    gap: 6px;
+  }
+}
+/* 窄屏手机：顶栏放不下文字，只留图标，和语言按钮一样是 32px 小正方形 */
+@media (max-width: 600px) {
+  .nes-btn.gallery-btn {
+    width: 32px;
+    padding: 0 !important;
+  }
+  .gallery-label {
+    display: none;
+  }
+}
+
+/* 图库弹窗：盖住整个页面，面板居中；作品是一张张卡片（缩略图 + 名字 + 保存 / 删除） */
+.gallery {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(16px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));
+  background: rgb(var(--ink-rgb) / 0.35);
+}
+.gallery[hidden] {
+  display: none;
+}
+.gallery-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(640px, 100%);
+  max-height: 100%;
+  padding: 14px;
+  background-color: var(--c-bg);
+  background-image: var(--grid-bg);
+  border: var(--btn-border);
+  border-radius: 2px;
+  box-shadow: 3px 4px 0 rgb(var(--ink-rgb) / 0.30);
+}
+.gallery-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 16px;
+  letter-spacing: 2px;
+}
+.gallery-head .nes-btn {
+  margin: 0;
+}
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 14px;
+  overflow-y: auto;
+  min-height: 0;
+  /* 按钮按下去会往下挪 2px，卡片还有投影；可以滚动的区域会把超出的部分裁掉，右边和下边留点地方 */
+  padding: 0 4px 6px 0;
+}
+.gallery-empty {
+  grid-column: 1 / -1;
+  margin: 24px 0;
+  text-align: center;
+  font-size: 14px;
+  color: rgb(var(--ink-rgb) / 0.7);
+}
+.gallery-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+/* 删除确认：盖在缩略图上，半透明遮罩 + 居中一个「确定删除」 */
+.gallery-thumb {
+  position: relative;
+}
+.gallery-confirm {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(var(--ink-rgb) / 0.45);
+}
+.gallery-confirm .nes-btn {
+  margin: 0;
+  background-color: var(--c-bg) !important;
+}
+.gallery-open {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.gallery-open:disabled {
+  cursor: default;
+}
+.gallery-open:not(:disabled):active img {
+  transform: translate(1px, 2px);
+  box-shadow: none;
+}
+.gallery-card img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  border: var(--btn-border);
+  box-shadow: 2px 3px 0 rgb(var(--ink-rgb) / 0.25);
+  /* 透明底的图下面垫一层细格子，看得出是透明的 */
+  background-color: var(--c-bg);
+  background-image: var(--grid-dark);
+}
+.gallery-card .nes-input {
+  margin: 0;
+  font-size: 16px; /* iOS 低于 16px 会自动放大页面 */
+}
+/* 名字输入框和垃圾桶一行 */
+.gallery-row {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+.gallery-row .nes-input {
+  flex: 1;
+  min-width: 0;
+}
+.nes-btn.gallery-delete {
+  flex: none;
+  min-width: 36px;
+  margin: 0;
+  padding: 0 6px !important;
+  text-indent: 0;
+  white-space: nowrap;
+}
+.pixel-icon {
+  display: block;
+  image-rendering: pixelated;
+}
+
 /* 和像素框一样大的小正方形 */
 .nes-btn.lang-btn {
   width: 32px;
@@ -398,15 +567,30 @@ h1 {
   transform: translate(1px, 2px);
 }
 
+/* 输入框做成凹下去的小屏幕（和 Predate 写解读的框一样）：
+   外面一圈细描边，里面左上暗、右下亮的内阴影，字带一点 LCD 残影；点进去时描边和凹陷再深一点 */
 .nes-input {
   width: 100%;
   background-color: var(--c-bg);
   color: var(--c-text);
+  text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.10);
   border-image: none !important;
   border: 2px solid rgb(var(--line-rgb) / 0.45) !important;
   border-radius: 2px !important;
+  box-shadow:
+    0 0 0 1px rgb(var(--line-rgb) / 0.5),
+    inset 2px 2px 0 rgba(0, 0, 0, 0.10),
+    inset -1px -1px 0 rgba(255, 255, 255, 0.12);
   padding: 8px 10px !important;
   font-size: 16px; /* iOS 低于 16px 会自动放大页面 */
+}
+.nes-input:focus {
+  border-color: rgb(var(--line-rgb) / 0.75) !important;
+  outline: none !important;
+  box-shadow:
+    0 0 0 1px rgb(var(--line-rgb) / 0.7),
+    inset 2px 2px 0 rgba(0, 0, 0, 0.12),
+    inset -1px -1px 0 rgba(255, 255, 255, 0.15) !important;
 }
 .nes-input::placeholder {
   color: rgb(var(--ink-rgb) / 0.55);

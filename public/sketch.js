@@ -795,11 +795,89 @@ function saveImage() {
   if (glitchSeed) applyGlitch(g.elt, glitchSeed);
   applyFilter(g.elt, currentFilter, sparkleOn);
   const blob = dataURLToBlob(g.elt.toDataURL(fmt.mime, 0.95));
+  const thumb = galleryThumb(g.elt);
   g.remove();
 
-  const stamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "");
   // 浏览器不支持的格式（比如部分 Safari 的 webp）会悄悄退回 png，按实际格式起名
   const ext = blob.type === fmt.mime ? fmt.ext : "png";
+  shareOrDownload(blob, ext); // 要在点击的同一时刻发起分享，iOS 才认，所以先分享、再存图库
+  const state = snapshotDrawing();
+  lastSavedDrawing = JSON.stringify([state.N, state.grid, state.text]);
+  addToGallery(blob, thumb, ext, state);
+}
+
+// ── 存 / 读画布状态（图库里点一下回到画布继续画）──────────
+// 存下格子、像素数、文字、配色、阴影、滤镜（自制的连参数）、叠加、导出样式和格式
+
+function snapshotDrawing() {
+  const mine = savedFilters.find((x) => x.id === currentFilter);
+  return {
+    N,
+    grid: grid.map((row) => row.slice()),
+    text: document.getElementById("text-input")?.value || "",
+    theme: { ...currentTheme },
+    shadow: { ...shadow },
+    filter: currentFilter,
+    // 自制 / 我的滤镜：连参数一起存，这个滤镜以后被删了也能还原
+    filterParams: currentFilter === "custom" ? { ...customParams } : mine ? { ...mine.p } : null,
+    sparkle: sparkleOn,
+    glitchSeed,
+    style: document.getElementById("export-style")?.value,
+    format: document.getElementById("export-format")?.value,
+  };
+}
+
+function restoreDrawing(st) {
+  N = st.N;
+  grid = st.grid.map((row) => row.slice());
+  history = [];
+  redoStack = [];
+  const sizeInput = document.getElementById("grid-size");
+  if (sizeInput) sizeInput.value = N;
+
+  const input = document.getElementById("text-input");
+  if (input) input.value = st.text;
+  currentText = st.text.trim();
+
+  // 预设配色按 id 找回来（名字跟着当前语言）；自定义的直接用存下的颜色
+  setTheme(THEME_PRESETS.find((p) => p.id === st.theme.id) || st.theme);
+  setShadow({ ...SHADOW_DEFAULT, ...st.shadow });
+
+  if (st.filterParams && (st.filter === "custom" || !FILTERS[st.filter])) {
+    customParams = { ...CUSTOM_DEFAULT, ...st.filterParams };
+    FILTERS.custom = filterFromParams(customParams);
+    try {
+      localStorage.setItem(CUSTOM_FILTER_KEY, JSON.stringify(customParams));
+    } catch (_) {}
+    setFilter("custom");
+  } else setFilter(FILTERS[st.filter] ? st.filter : "none");
+  setSparkle(!!st.sparkle);
+  glitchSeed = st.glitchSeed || 0;
+  try {
+    localStorage.setItem("pixelgraphy_glitch", String(glitchSeed));
+  } catch (_) {}
+  buildOverlayPanel();
+
+  for (const [id, v] of [["export-style", st.style], ["export-format", st.format]]) {
+    const el = document.getElementById(id);
+    if (el && v && [...el.options].some((o) => o.value === v)) el.value = v;
+  }
+  buildThemeSwatches();
+  lastSavedDrawing = JSON.stringify([N, grid, st.text]);
+  markDirty();
+}
+
+// 画布是空的，或者和上次保存 / 打开的一样（没有没存的改动）→ 可以直接换成图库里的图，不用确认
+let lastSavedDrawing = null;
+function canReplaceCanvas() {
+  if (grid.every((row) => row.every((c) => c === "/" || c === null))) return true;
+  const text = document.getElementById("text-input")?.value || "";
+  return JSON.stringify([N, grid, text]) === lastSavedDrawing;
+}
+
+// 存到相册 / 下载：手机走系统分享面板，电脑直接下载（图库里再保存一次也用这个）
+function shareOrDownload(blob, ext) {
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "");
   const name = `pixelgraphy-${stamp}.${ext}`;
   const file = new File([blob], name, { type: blob.type });
   if (canShareToAlbum(file)) {
@@ -903,6 +981,7 @@ function applyLang() {
   buildThemeSwatches(); // 色块的提示文字也要换
   buildFilterPanel();
   buildOverlayPanel();
+  renderGallery();
 }
 
 function toggleLang() {

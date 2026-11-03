@@ -16,12 +16,17 @@
     <script src="lib/p5.js"></script>
     <script src="filters.js"></script>
     <script src="sketch.js"></script>
+    <script src="gallery.js"></script>
   </head>
   <body>
     <main>
       <header>
         <h1>PIXELGRAPHY</h1>
         <div class="header-right">
+          <!-- 窄屏只显示图标（2×2 小方格），宽屏图标 + 文字 -->
+          <button class="nes-btn gallery-btn" id="gallery-btn" onclick="openGallery()" data-zh-aria="图库" data-en-aria="Gallery">
+            <span class="gallery-icon" aria-hidden="true"></span><span class="gallery-label" data-zh="图库" data-en="Gallery"></span>
+          </button>
           <label class="bg-label"><span data-zh="像素" data-en="Pixels"></span>
             <input id="grid-size" class="nes-input small-input" type="number" min="4" max="128" step="1" inputmode="numeric" />
           </label>
@@ -103,5 +108,16 @@
         </div>
       </section>
     </main>
+
+    <!-- 图库：保存过的图都在这里，可以改名、再保存、删除。点外面或按 Esc 关掉 -->
+    <div id="gallery" class="gallery" hidden onclick="event.target === this && closeGallery()">
+      <div class="gallery-panel" role="dialog" aria-modal="true" data-zh-aria="图库" data-en-aria="Gallery">
+        <div class="gallery-head">
+          <span data-zh="图库" data-en="Gallery"></span>
+          <button class="nes-btn small-btn" onclick="closeGallery()" data-zh-aria="关闭" data-en-aria="Close">×</button>
+        </div>
+        <div id="gallery-grid" class="gallery-grid"></div>
+      </div>
+    </div>
   </body>
 </html>
