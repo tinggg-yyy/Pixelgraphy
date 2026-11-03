@@ -254,13 +254,11 @@ h1 {
   width: 100%;
 }
 
+/* 画框的 2px 边画在画布里（滤镜才能连框一起盖住，见 sketch.js 的 draw），这里只剩外面一圈细线和投影 */
 #p5-canvas-container {
   position: relative;
-  border: 2px solid rgb(var(--line-rgb) / 0.45);
   box-shadow:
     0 0 0 1px rgb(var(--line-rgb) / 0.5),
-    inset 2px 2px 0 rgba(0, 0, 0, 0.10),
-    inset -1px -1px 0 rgba(255, 255, 255, 0.12),
     3px 4px 0 rgb(var(--ink-rgb) / 0.30);
   background: var(--c-bg);
   line-height: 0;
@@ -434,17 +432,6 @@ h1 {
   font-size: 13px !important;
 }
 
-/* 屏幕滤镜：套在画框外面这一层；颗粒 / 色调图层盖在画框上，不挡画画 */
-#canvas-fx {
-  position: relative;
-  line-height: 0;
-}
-/* 不能加 z-index：会让这层自成一个混合组，里面的颗粒就只和透明底混，不和画面混了 */
-#fx-overlay {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
 
 #left-panel {
   width: 100%;
@@ -452,26 +439,67 @@ h1 {
   flex-direction: column;
   gap: 10px;
 }
-#filter-row {
+/* 滤镜面板：滤镜选项和叠加效果都是按钮，按下的那个是凹下去的（和画笔 / 橡皮一样） */
+#filter-panel {
+  width: min(300px, calc(100vw - 32px));
+}
+.option-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.option-grid .nes-btn {
+  margin: 0;
+  min-width: 0;
+  white-space: nowrap;
+}
+/* 「我的滤镜」名字可能比较长，两列 */
+.option-grid.two-col {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.option-grid .nes-btn {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.filter-edit-toggle {
+  margin: 6px 0 0 !important;
+}
+/* 自制：每个参数一行，名字在左、滑杆撑满；色调后面跟两个颜色 */
+.filter-editor {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 16px;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 4px;
+}
+.filter-editor .bg-label > span {
+  width: 5.5em;
+  flex: none;
+}
+.filter-editor input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  accent-color: var(--c-text);
+}
+#filter-btn #filter-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* ── 电脑 / iPad 横屏：左栏（配色、阴影、滤镜）· 画布居中 · 右栏（工具、写字、导出） ── */
+/* ── 电脑 / iPad 横屏：左栏（配色、阴影、滤镜三个按钮）· 画布居中 · 右栏（工具、写字、导出） ── */
 @media (min-width: 900px) and (orientation: landscape) {
   /* 画布边长 = 一屏高度减去上下留白和顶栏；两边栏分剩下的宽度。
-     88px = 上下 padding 14+14 + 顶栏 40 + 顶栏下间距 12 + 画框边框和外阴影 8，和 sketch.js 的 canvasSize 对应 */
+     84px = 上下 padding 14+14 + 顶栏 40 + 顶栏下间距 12 + 画框外阴影 4，和 sketch.js 的 canvasSize 对应 */
   main {
-    --canvas-s: calc(100vh - 88px);
+    --canvas-s: calc(100vh - 84px);
     --gap: 24px;
     max-width: none;
     padding: 14px 24px;
   }
   @supports (height: 100dvh) {
     main {
-      --canvas-s: calc(100dvh - 88px);
+      --canvas-s: calc(100dvh - 84px);
     }
   }
   header {
@@ -529,20 +557,17 @@ h1 {
     margin: 0;
   }
 
-  /* 滤镜和导出：每项一行；下拉框在标签下面撑满整栏，窄栏也放得下 */
-  #filter-row,
+  /* 导出：每项一行；下拉框在标签下面撑满整栏，窄栏也放得下 */
   #tools .tool-row:last-child {
     flex-direction: column;
     align-items: stretch;
     gap: 18px;
   }
-  #filter-row .bg-label:has(> select),
   #tools .tool-row:last-child .bg-label {
     flex-direction: column;
     align-items: stretch;
     gap: 8px;
   }
-  #filter-row select,
   #tools .tool-row:last-child select {
     width: 100%;
   }
@@ -550,11 +575,6 @@ h1 {
   #left-panel .nes-input,
   #tools .nes-input {
     margin: 0;
-  }
-  /* 闪粉：文字在左，勾选框靠右 */
-  #filter-row .bg-label:has(> input[type="checkbox"]) {
-    flex-direction: row-reverse;
-    justify-content: space-between;
   }
   #tools .tool-row:last-child > .nes-btn {
     margin: 6px 0 0;

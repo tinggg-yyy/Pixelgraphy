@@ -274,21 +274,21 @@ function applyFilter(canvas, id, sparkle = false) {
   out.drawImage(src, 0, 0);
   if (f.blur) _drawBlurred(out, src, f.blur * u);
 
-  // 晕染：大半径模糊的副本叠回去
-  if (f.bleed) {
+  // 晕染：大半径模糊的副本叠回去（可以是一层，也可以是好几层，比如晕染 + 灼烧）
+  for (const bleed of [].concat(f.bleed || [])) {
     let copy = src;
-    if (f.bleed.lift) {
+    if (bleed.lift) {
       const [lc, lctx] = _tmp("lift", w, h);
-      _drawBlurred(lctx, src, f.bleed.r * u);
+      _drawBlurred(lctx, src, bleed.r * u);
       lctx.globalCompositeOperation = "source-atop";
-      lctx.globalAlpha = f.bleed.lift;
+      lctx.globalAlpha = bleed.lift;
       lctx.fillStyle = "#fff";
       lctx.fillRect(0, 0, w, h);
       copy = lc;
     }
-    out.globalAlpha = f.bleed.a;
-    out.globalCompositeOperation = f.bleed.mode || (_inkIsDark() ? "multiply" : "screen");
-    if (copy === src) _drawBlurred(out, src, f.bleed.r * u);
+    out.globalAlpha = bleed.a;
+    out.globalCompositeOperation = bleed.mode || (_inkIsDark() ? "multiply" : "screen");
+    if (copy === src) _drawBlurred(out, src, bleed.r * u);
     else out.drawImage(copy, 0, 0);
     out.globalAlpha = 1;
     out.globalCompositeOperation = "source-over";
@@ -342,105 +342,6 @@ function applyFilter(canvas, id, sparkle = false) {
   out.globalCompositeOperation = "destination-in";
   out.drawImage(src, 0, 0);
   out.restore();
-}
-
-// ── 屏幕上的滤镜 ─────────────────────────────────────
-// 屏幕上要连 CSS 画的画框一起套滤镜，canvas 管不到画框，所以套在包着画框的元素上，拆成两部分：
-//   模糊 / 晕染 / RGB 错位 → SVG 滤镜，用 CSS filter: url(#…) 套在这个元素上
-//   发灰 / 色调 / 颗粒 / 闪粉 → 在它外面（父元素里）盖一层图层（不挡画画），用 mix-blend-mode 叠。
-//                              不能放进被滤镜的元素里，不然颗粒会先被加深 / 模糊，和导出的顺序不一样
-// 噪点贴图和 canvas 导出用的是同一张。unit = 画布在屏幕上的宽度 / 1024，看起来和导出的 1024 图比例一样。
-
-const _CSS_BLEND = { "source-over": "normal", lighter: "plus-lighter" };
-const _tileURL = {};
-
-function _svgFilter(f, unit) {
-  const parts = [];
-  let last = "SourceGraphic";
-  if (f.shift) {
-    const dx = (f.shift * unit).toFixed(2);
-    // 每个通道都先当成不透明来拆、来加（不然三份透明度加起来，半透明的地方会被叠深），最后再按原透明度裁
-    const only = (r, g, b) => `${r} 0 0 0 0  0 ${g} 0 0 0  0 0 ${b} 0 0  0 0 0 0 1`;
-    parts.push(
-      `<feColorMatrix in="${last}" values="${only(1, 0, 0)}" result="r0"/>`,
-      `<feOffset in="r0" dx="${dx}" result="r"/>`,
-      `<feColorMatrix in="${last}" values="${only(0, 1, 0)}" result="g"/>`,
-      `<feColorMatrix in="${last}" values="${only(0, 0, 1)}" result="b0"/>`,
-      `<feOffset in="b0" dx="-${dx}" result="b"/>`,
-      `<feComposite in="r" in2="g" operator="arithmetic" k2="1" k3="1" result="rg"/>`,
-      `<feComposite in="rg" in2="b" operator="arithmetic" k2="1" k3="1" result="shifted0"/>`,
-      `<feComposite in="shifted0" in2="SourceAlpha" operator="in" result="shifted"/>`
-    );
-    last = "shifted";
-  }
-  if (f.blur) {
-    parts.push(`<feGaussianBlur in="${last}" stdDeviation="${(f.blur * unit).toFixed(2)}" result="blurred"/>`);
-    last = "blurred";
-  }
-  if (f.bleed) {
-    const a = f.bleed.a;
-    parts.push(
-      `<feGaussianBlur in="${last}" stdDeviation="${(f.bleed.r * unit).toFixed(2)}" result="big0"/>`,
-      // lift：每个通道 c → c·(1-lift) + lift，往白提
-      `<feComponentTransfer in="big0" result="big">${["R", "G", "B"]
-        .map((ch) => `<feFunc${ch} type="linear" slope="${1 - (f.bleed.lift || 0)}" intercept="${f.bleed.lift || 0}"/>`)
-        .join("")}</feComponentTransfer>`,
-      `<feBlend in="big" in2="${last}" mode="${f.bleed.mode || (_inkIsDark() ? "multiply" : "screen")}" result="bled"/>`,
-      `<feComposite in="bled" in2="${last}" operator="arithmetic" k2="${a}" k3="${1 - a}" result="bleedOut"/>`
-    );
-    last = "bleedOut";
-  }
-  return parts.join("");
-}
-
-function applyScreenFilter(el, id, unit, sparkle = false) {
-  const f = FILTERS[id] || {};
-  let svg = document.getElementById("fx-svg");
-  if (!svg) {
-    svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.id = "fx-svg";
-    svg.setAttribute("aria-hidden", "true");
-    svg.style.cssText = "position:absolute;width:0;height:0;overflow:hidden";
-    document.body.appendChild(svg);
-  }
-  let overlay = document.getElementById("fx-overlay");
-  if (!overlay) {
-    overlay = document.createElement("div");
-    overlay.id = "fx-overlay";
-    el.parentElement.appendChild(overlay);
-  }
-
-  const fe = _svgFilter(f, unit);
-  // 每次换一个 id，Safari 才会认新的滤镜内容
-  const fid = `fx-${id}-${Date.now()}`;
-  svg.innerHTML = fe
-    ? `<filter id="${fid}" x="-5%" y="-5%" width="110%" height="110%" color-interpolation-filters="sRGB">${fe}</filter>`
-    : "";
-  el.style.filter = fe ? `url(#${fid})` : "";
-
-  overlay.innerHTML = "";
-  const layer = (css) => {
-    const d = document.createElement("div");
-    d.style.cssText = `position:absolute;inset:0;${css}`;
-    overlay.appendChild(d);
-  };
-  if (f.wash) layer(`background:${currentTheme.bg};opacity:${f.wash}`);
-  if (f.tint)
-    layer(`background:linear-gradient(to bottom right, ${f.tint.from}, ${f.tint.to});mix-blend-mode:soft-light;opacity:${f.tint.a}`);
-  for (const grain of f.grain || []) {
-    const key = grain.type + (grain.colors || []).join();
-    const url = (_tileURL[key] ||= _noiseTile(grain).toDataURL());
-    const size = 256 * (grain.scale || 1) * unit;
-    layer(
-      `background-image:url(${url});background-size:${size}px ${size}px;` +
-        `mix-blend-mode:${_CSS_BLEND[grain.mode] || grain.mode};opacity:${grain.a}`
-    );
-  }
-  if (sparkle) {
-    _tileURL.sparkle ||= _sparkleTile().toDataURL();
-    const size = 1024 * unit;
-    layer(`background-image:url(${_tileURL.sparkle});background-size:${size}px ${size}px;mix-blend-mode:screen`);
-  }
 }
 
 // ── 故障 ─────────────────────────────────────────────

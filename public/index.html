@@ -32,7 +32,7 @@
       <!-- 手机竖屏：从上到下排；电脑 / iPad 横屏：左栏 · 画布 · 右栏 -->
       <section class="pixeldraw">
         <aside id="left-panel">
-          <!-- 配色和阴影都是按钮，点开是浮在页面上的面板（面板相对这一行定位） -->
+          <!-- 配色、阴影、滤镜都是按钮，点开是浮在页面上的面板（面板相对这一行定位） -->
           <div id="style-row">
             <div id="theme-row" data-zh-aria="配色" data-en-aria="Theme"></div>
             <button class="nes-btn pop-btn" id="shadow-btn" onclick="toggleShadowPop()" aria-expanded="false">
@@ -54,31 +54,16 @@
                 <input id="shadow-y" type="range" min="-0.5" max="0.5" step="0.05" />
               </label>
             </div>
-          </div>
-          <!-- 滤镜：屏幕上只作用在画框里，导出时覆盖整张图 -->
-          <div id="filter-row">
-            <label class="bg-label"><span data-zh="滤镜" data-en="Filter"></span>
-              <select id="filter-select" class="nes-input small-input">
-                <option value="none" data-zh="无" data-en="None"></option>
-                <option value="soft" data-zh="柔焦" data-en="Soft"></option>
-                <option value="dreamy" data-zh="梦幻" data-en="Dreamy"></option>
-                <option value="film" data-zh="胶片" data-en="Film"></option>
-                <option value="rgb" data-zh="错位" data-en="RGB Shift"></option>
-                <option value="burn" data-zh="灼烧" data-en="Burn"></option>
-                <option value="softburn" data-zh="柔烧" data-en="Soft Burn"></option>
-                <option value="burnshift" data-zh="烧错位" data-en="Burn Shift"></option>
-              </select>
-            </label>
-            <label class="bg-label"><input type="checkbox" id="sparkle-toggle" /><span data-zh="闪粉" data-en="Sparkle"></span></label>
-            <label class="bg-label"><input type="checkbox" id="glitch-toggle" /><span data-zh="故障" data-en="Glitch"></span></label>
+            <!-- 滤镜：屏幕上只作用在画框里，导出时覆盖整张图；闪粉、故障是叠加在上面的，可以和任何滤镜一起开 -->
+            <button class="nes-btn pop-btn" id="filter-btn" onclick="toggleFilterPop()" aria-expanded="false">
+              <span id="filter-name"></span><span class="caret">▾</span>
+            </button>
+            <div id="filter-panel" class="pop-panel" hidden></div>
           </div>
         </aside>
 
         <div id="canvas-col">
-          <!-- 屏幕上的滤镜套在画框（#p5-canvas-container，连边框）上，颗粒图层盖在这一层里 -->
-          <div id="canvas-fx">
-            <div id="p5-canvas-container"></div>
-          </div>
+          <div id="p5-canvas-container"></div>
         </div>
 
         <div id="tools">

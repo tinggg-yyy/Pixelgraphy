@@ -35,10 +35,10 @@ function canvasSize() {
   const header = document.querySelector("header");
   const headerH = header?.offsetHeight || 60;
   if (window.matchMedia(WIDE_QUERY).matches) {
-    // 画布竖向撑满一屏（减去上下留白 14+14、顶栏下间距 12、边框和外阴影 8），宽不超过中间那栏
+    // 画布竖向撑满一屏（减去上下留白 14+14、顶栏下间距 12、画框外阴影 4），宽不超过中间那栏
     const col = document.getElementById("canvas-col");
-    const colW = (col?.clientWidth || windowWidth - 400) - 8;
-    return Math.floor(Math.max(200, Math.min(colW, windowHeight - headerH - 48)));
+    const colW = (col?.clientWidth || windowWidth - 400) - 4;
+    return Math.floor(Math.max(200, Math.min(colW, windowHeight - headerH - 44)));
   }
   const tools = document.getElementById("tools");
   const left = document.getElementById("left-panel");
@@ -59,7 +59,7 @@ function setup() {
   const s = canvasSize();
   const canvas = createCanvas(s, s);
   canvas.parent("p5-canvas-container");
-  refreshPageFilter();
+  markDirty();
   attachPointerEvents(canvas.elt);
   grid = blankGrid();
 }
@@ -141,17 +141,20 @@ function renderGrid(g, size, withShadow = true) {
       const cell = grid[y][x];
       const px = x * cellSize, py = y * cellSize;
 
-      if (cell === "pixel" || cell === 4 || PIXEL_ALPHA[cell] !== undefined) {
-        const a = cell === "pixel" ? 255 : PIXEL_ALPHA[cell];
+      // 文字格轮到的字是空格，或者字已经删光了：照同样的深浅画成普通格子，不要空着
+      const isText = cell === "text" || cell === "#" || TEXT_ALPHA[cell] !== undefined;
+      const ch = isText ? charAt(x, y) : "";
+      if (cell === "pixel" || cell === 4 || PIXEL_ALPHA[cell] !== undefined || (isText && !ch.trim())) {
+        const a = cell === "pixel" ? 255 : (PIXEL_ALPHA[cell] ?? TEXT_ALPHA[cell] ?? 255);
         g.fill(...ink, a);
         shadowOn();
         g.rect(px, py, cellSize, cellSize);
         shadowOff();
-      } else if (cell === "text" || cell === "#" || TEXT_ALPHA[cell] !== undefined) {
+      } else if (isText) {
         const a = TEXT_ALPHA[cell] ?? 255;
         g.fill(...ink, a);
         shadowOn();
-        g.text(charAt(x, y), px + cellSize / 2 + tx, py + cellSize / 2 + ty);
+        g.text(ch, px + cellSize / 2 + tx, py + cellSize / 2 + ty);
         shadowOff();
       } else if (cell !== null && cell !== "/") {
         g.fill(...ink, 255);
@@ -182,6 +185,70 @@ function markDirty() {
   dirty = true;
 }
 
+// ── 自制滤镜 ─────────────────────────────────────────
+// 自制就是用滑杆调滤镜的几个部件；调的时候是 FILTERS.custom，收藏后存成 FILTERS["my-…"]
+
+// [参数, 中文, 英文, 最大值, 步长]
+const FILTER_PARAMS = [
+  ["blur", "虚焦", "Blur", 8, 0.2],
+  ["bleed", "晕染", "Bleed", 0.8, 0.05],
+  ["burn", "灼烧", "Burn", 1, 0.05],
+  ["shift", "错位", "RGB shift", 24, 1],
+  ["wash", "发灰", "Fade", 0.6, 0.02],
+  ["grain", "颗粒", "Grain", 1, 0.02],
+  ["color", "彩色颗粒", "Color grain", 0.4, 0.02],
+  ["mottle", "斑驳", "Mottle", 1, 0.02],
+];
+const CUSTOM_DEFAULT = { blur: 1, bleed: 0.3, burn: 0, shift: 0, wash: 0, grain: 0.15, color: 0.1, mottle: 0 };
+
+// 滑杆参数 → 滤镜定义（和 filters.js 里预设的写法一样）
+function filterFromParams(p) {
+  const f = { blur: p.blur, shift: p.shift, wash: p.wash, bleed: [], grain: [] };
+  if (p.bleed) f.bleed.push({ r: 5, a: p.bleed });
+  if (p.burn) f.bleed.push({ r: 2.5, a: p.burn, mode: "color-burn", lift: 0.5 });
+  if (p.color) f.grain.push({ type: "color", a: p.color, mode: "source-over", colors: PINK_BLUE });
+  if (p.mottle) f.grain.push({ type: "mottle", a: p.mottle, mode: "soft-light", scale: 1.5, colors: ["#ff7fb0", "#7fb0ff"] });
+  if (p.grain) f.grain.push({ type: "mono", a: p.grain, mode: "overlay" });
+  return f;
+}
+
+// 滤镜定义 → 滑杆参数：从预设开始改的时候，滑杆先摆到这个预设的位置（大致还原）
+function paramsFromFilter(f) {
+  const p = { ...CUSTOM_DEFAULT };
+  for (const [k] of FILTER_PARAMS) p[k] = 0;
+  p.blur = f.blur || 0;
+  p.shift = f.shift || 0;
+  p.wash = f.wash || 0;
+  for (const b of [].concat(f.bleed || [])) {
+    if (b.mode === "color-burn") p.burn = b.a;
+    else p.bleed = b.a;
+  }
+  for (const g of f.grain || []) {
+    const k = g.type === "mono" ? "grain" : g.type;
+    p[k] = Math.min(p[k] + g.a, FILTER_PARAMS.find(([key]) => key === k)[3]);
+  }
+  return p;
+}
+
+const CUSTOM_FILTER_KEY = "pixelgraphy_custom_filter";
+const SAVED_FILTERS_KEY = "pixelgraphy_saved_filters";
+let customParams = { ...CUSTOM_DEFAULT };
+// 收藏的滤镜：[{ id: "my-时间戳", name, p }]，id 固定不变，删了别的也不会串
+let savedFilters = [];
+try {
+  customParams = { ...CUSTOM_DEFAULT, ...JSON.parse(localStorage.getItem(CUSTOM_FILTER_KEY) || "{}") };
+  const list = JSON.parse(localStorage.getItem(SAVED_FILTERS_KEY) || "[]");
+  if (Array.isArray(list)) savedFilters = list.filter((x) => x?.id?.startsWith("my-") && x.p);
+} catch (_) {}
+FILTERS.custom = filterFromParams(customParams);
+for (const x of savedFilters) FILTERS[x.id] = filterFromParams({ ...CUSTOM_DEFAULT, ...x.p });
+
+function storeSavedFilters() {
+  try {
+    localStorage.setItem(SAVED_FILTERS_KEY, JSON.stringify(savedFilters));
+  } catch (_) {}
+}
+
 let currentFilter = "none";
 let sparkleOn = false; // 闪粉：单独的开关，能叠在任何滤镜上
 let glitchSeed = 0; // 故障：0 = 关；每次打开换一个种子，换一套故障
@@ -198,6 +265,7 @@ function setGlitch(on) {
     localStorage.setItem("pixelgraphy_glitch", String(glitchSeed));
   } catch (_) {}
   markDirty();
+  buildFilterPanel();
 }
 
 function setSparkle(on) {
@@ -205,7 +273,8 @@ function setSparkle(on) {
   try {
     localStorage.setItem("pixelgraphy_sparkle", on ? "1" : "0");
   } catch (_) {}
-  refreshPageFilter();
+  markDirty();
+  buildFilterPanel();
 }
 
 function setFilter(id) {
@@ -214,23 +283,241 @@ function setFilter(id) {
   try {
     localStorage.setItem("pixelgraphy_filter", id);
   } catch (_) {}
-  refreshPageFilter();
   markDirty();
+  buildFilterPanel();
 }
 
-// 屏幕上滤镜套在画框（连框一起）上，导出时在导出图上整张套一遍
-function refreshPageFilter() {
-  applyScreenFilter(document.getElementById("p5-canvas-container"), currentFilter, width / 1024, sparkleOn);
+// ── 滤镜按钮 ─────────────────────────────────────────
+// 点开是一个面板：上面选滤镜（单选），下面是叠加效果闪粉、故障（各自开关，能和任何滤镜一起用）
+
+const FILTER_LABELS = {
+  none: ["无", "None"],
+  soft: ["柔焦", "Soft"],
+  dreamy: ["梦幻", "Dreamy"],
+  film: ["胶片", "Film"],
+  rgb: ["错位", "RGB Shift"],
+  burn: ["灼烧", "Burn"],
+  softburn: ["柔烧", "Soft Burn"],
+  burnshift: ["烧错位", "Burn Shift"],
+};
+
+let filterEditorOpen = false;
+
+const filterName = (id) => {
+  if (id === "custom") return t("自制", "Custom");
+  const mine = savedFilters.find((x) => x.id === id);
+  if (mine) return mine.name || t("我的滤镜", "My filter");
+  return t(...(FILTER_LABELS[id] || FILTER_LABELS.none));
+};
+
+// 按钮上：滤镜名 + 开着的叠加效果；什么都没开就显示「滤镜」
+function updateFilterLabel() {
+  const label = document.getElementById("filter-name");
+  if (!label) return;
+  const parts = [];
+  if (currentFilter !== "none") parts.push(filterName(currentFilter));
+  if (sparkleOn) parts.push(t("闪粉", "Sparkle"));
+  if (glitchSeed) parts.push(t("故障", "Glitch"));
+  label.textContent = parts.length ? parts.join(" + ") : t("滤镜", "Filter");
 }
+
+// 现在这个滤镜的滑杆参数（自制的就是它自己；收藏的用存下的；预设的大致还原）
+function currentFilterParams() {
+  if (currentFilter === "custom") return customParams;
+  const mine = savedFilters.find((x) => x.id === currentFilter);
+  if (mine) return { ...CUSTOM_DEFAULT, ...mine.p };
+  return paramsFromFilter(FILTERS[currentFilter] || {});
+}
+
+// 拖滑杆：改成自制滤镜，实时生效（不重建面板，不然滑杆拖到一半就没了）
+function tweakCustomFilter(patch) {
+  customParams = { ...currentFilterParams(), ...patch };
+  FILTERS.custom = filterFromParams(customParams);
+  currentFilter = "custom";
+  try {
+    localStorage.setItem(CUSTOM_FILTER_KEY, JSON.stringify(customParams));
+    localStorage.setItem("pixelgraphy_filter", "custom");
+  } catch (_) {}
+  markDirty();
+  updateFilterLabel();
+}
+
+function buildFilterPanel() {
+  const panel = document.getElementById("filter-panel");
+  if (!panel) return;
+  updateFilterLabel();
+
+  panel.innerHTML = "";
+  const section = (title, className = "option-grid") => {
+    const h = document.createElement("div");
+    h.className = "theme-section-title";
+    h.textContent = title;
+    const grid = document.createElement("div");
+    grid.className = className;
+    panel.append(h, grid);
+    return grid;
+  };
+  const option = (grid, text, active, onClick) => {
+    const b = document.createElement("button");
+    b.className = "nes-btn small-btn" + (active ? " tool-active" : "");
+    b.textContent = text;
+    b.title = text;
+    b.setAttribute("aria-pressed", active);
+    b.onclick = onClick;
+    grid.appendChild(b);
+    return b;
+  };
+
+  const presets = section(t("滤镜", "Filter"));
+  for (const id of Object.keys(FILTER_LABELS))
+    if (FILTERS[id]) option(presets, filterName(id), id === currentFilter, () => setFilter(id));
+
+  const mine = section(t("我的滤镜", "My filters"), "option-grid two-col");
+  for (const x of savedFilters) option(mine, filterName(x.id), x.id === currentFilter, () => setFilter(x.id));
+  const unsavedChip = () => {
+    const b = option(mine, t("自制（未收藏）", "Custom (unsaved)"), true, () => {});
+    b.dataset.custom = "1";
+  };
+  if (currentFilter === "custom") unsavedChip();
+  if (!mine.children.length) {
+    const hint = document.createElement("span");
+    hint.className = "theme-hint";
+    hint.textContent = t("点「自制」调一个，再收藏", "Tap Make to tune one, then Save");
+    mine.appendChild(hint);
+  }
+
+  const overlays = section(t("叠加", "Overlay"));
+  option(overlays, t("闪粉", "Sparkle"), sparkleOn, () => setSparkle(!sparkleOn));
+  option(overlays, t("故障", "Glitch"), glitchSeed > 0, () => setGlitch(!glitchSeed));
+
+  // 自制：点开是一排滑杆，从现在这个滤镜的样子开始调
+  const editToggle = document.createElement("button");
+  editToggle.className = "nes-btn small-btn filter-edit-toggle" + (filterEditorOpen ? " tool-active" : "");
+  editToggle.textContent = `${t("自制", "Make")} ${filterEditorOpen ? "▴" : "▾"}`;
+  editToggle.onclick = () => {
+    filterEditorOpen = !filterEditorOpen;
+    buildFilterPanel();
+  };
+  panel.appendChild(editToggle);
+  if (!filterEditorOpen) return;
+
+  const editor = document.createElement("div");
+  editor.className = "filter-editor";
+  panel.appendChild(editor);
+  const params = currentFilterParams();
+  // 一拖滑杆就变成「自制（未收藏）」：就地改高亮，不重建面板
+  const markCustom = () => {
+    for (const el of panel.querySelectorAll(".option-grid .tool-active"))
+      if (el.parentElement !== overlays && !el.dataset.custom) el.classList.remove("tool-active");
+    if (!mine.querySelector("[data-custom]")) {
+      mine.querySelector(".theme-hint")?.remove();
+      unsavedChip();
+    }
+    setAction(null);
+  };
+  for (const [key, zh, en, max, step] of FILTER_PARAMS) {
+    const row = document.createElement("label");
+    row.className = "bg-label";
+    const text = document.createElement("span");
+    text.textContent = t(zh, en);
+    const range = document.createElement("input");
+    range.type = "range";
+    range.min = 0;
+    range.max = max;
+    range.step = step;
+    range.value = params[key];
+    range.addEventListener("input", () => {
+      tweakCustomFilter({ [key]: Number(range.value) });
+      markCustom();
+    });
+    row.append(text, range);
+    editor.appendChild(row);
+  }
+
+  // 名字 + 收藏 / 删除：自制还没收藏 → 起名 + 收藏；选中的是收藏 → 改名 + 删除；选的是预设就不显示
+  const nameRow = document.createElement("div");
+  nameRow.className = "theme-name-row";
+  const nameInput = document.createElement("input");
+  nameInput.type = "text";
+  nameInput.className = "nes-input small-input";
+  nameInput.maxLength = 16;
+  nameInput.placeholder = t("起个名字", "Name it");
+  const action = document.createElement("button");
+  action.className = "nes-btn small-btn";
+  nameRow.append(nameInput, action);
+  panel.appendChild(nameRow);
+
+  const saveCurrent = () => {
+    const id = `my-${Date.now()}`;
+    const name = nameInput.value.trim() || `${t("我的滤镜", "My filter")} ${savedFilters.length + 1}`;
+    savedFilters.push({ id, name, p: { ...customParams } });
+    FILTERS[id] = filterFromParams(customParams);
+    storeSavedFilters();
+    setFilter(id);
+  };
+  let actionFor; // 只在切换「收藏 / 自制」时重填名字，拖滑杆时不清掉已经输入的名字
+  const setAction = (mineEntry) => {
+    nameRow.hidden = !mineEntry && currentFilter !== "custom";
+    if (actionFor !== mineEntry) nameInput.value = mineEntry ? mineEntry.name || "" : "";
+    actionFor = mineEntry;
+    nameInput.onkeydown = (e) => {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      if (mineEntry) nameInput.blur();
+      else saveCurrent();
+    };
+    // 已收藏的滤镜：改完名字（回车或离开输入框）就存；只更新文字不重建面板（同配色的改名）
+    nameInput.onchange = mineEntry
+      ? () => {
+          mineEntry.name = nameInput.value.trim() || mineEntry.name;
+          storeSavedFilters();
+          updateFilterLabel();
+          const btn = [...mine.children].find((el) => el.classList.contains("tool-active"));
+          if (btn) btn.textContent = btn.title = filterName(mineEntry.id);
+        }
+      : null;
+    action.textContent = mineEntry ? t("× 删除", "× Delete") : t("★ 收藏", "★ Save");
+    action.onclick = mineEntry
+      ? () => {
+          savedFilters = savedFilters.filter((x) => x !== mineEntry);
+          delete FILTERS[mineEntry.id];
+          storeSavedFilters();
+          setFilter("none");
+        }
+      : saveCurrent;
+  };
+  setAction(savedFilters.find((x) => x.id === currentFilter) || null);
+}
+
+// 画框也画在画布里（不用 CSS 边框），这样滤镜能连框一起盖住。
+// 屏幕上的滤镜直接套在画布像素上，和导出用同一套代码：
+// 以前用 CSS filter / mix-blend-mode 套在画框外面，iPhone、iPad 的 Safari 对套在 canvas 上的这两样支持不好，
+// 滤镜会只盖到框、盖不到画，画面变了也要过一会儿才更新
+const FRAME = 2; // 画框宽度（CSS 像素）
+const innerSize = () => width - 2 * FRAME;
+let frameColor = null;
+document.addEventListener("themechange", () => (frameColor = null));
 
 function draw() {
   if (!dirty) return;
   dirty = false;
-  // 画上底色（和画框的 CSS 底色一样），滤镜的颗粒、色调才能落在底上，和导出的一致
   background(themeBg());
-  renderGrid(window, width);
-  renderCellLines(window, width);
-  if (glitchSeed) applyGlitch(drawingContext.canvas, glitchSeed);
+  push();
+  translate(FRAME, FRAME);
+  renderGrid(window, innerSize());
+  renderCellLines(window, innerSize());
+  pop();
+  // 画框：和以前 CSS 边框一样的颜色（线条色 45%）
+  frameColor ||= `rgb(${getComputedStyle(document.documentElement).getPropertyValue("--line-rgb").trim()} / 0.45)`;
+  const ctx = drawingContext;
+  ctx.save();
+  ctx.strokeStyle = frameColor;
+  ctx.lineWidth = FRAME;
+  ctx.strokeRect(FRAME / 2, FRAME / 2, width - FRAME, height - FRAME);
+  ctx.restore();
+  // 和导出一样的顺序：先故障，再滤镜
+  if (glitchSeed) applyGlitch(ctx.canvas, glitchSeed);
+  applyFilter(ctx.canvas, currentFilter, sparkleOn);
 }
 
 // ── 工具 ─────────────────────────────────────────────
@@ -268,16 +555,38 @@ function setUndo() {
 
 let drawing = false;
 
-// 在画布坐标 (mx, my) 所在的格子上画一下
-function paintAt(mx, my) {
-  const gx = floor((mx / width) * N);
-  const gy = floor((my / height) * N);
+// 触控笔（Apple Pencil 这类）的力度 → 深浅 1~4；轻轻画是浅的，用力画是深的
+function pressureLevel(p) {
+  if (p < 0.2) return 1;
+  if (p < 0.4) return 2;
+  if (p < 0.65) return 3;
+  return 4;
+}
+
+// 在画布坐标 (mx, my) 所在的格子上画一下。
+// pressure：触控笔的力度（0~1），有就按力度定深浅；鼠标、手指拿不到真实力度，传 null，还是逐级加深
+function paintAt(mx, my, pressure = null) {
+  // 画布坐标 → 格子：扣掉画框
+  const gx = floor(((mx - FRAME) / innerSize()) * N);
+  const gy = floor(((my - FRAME) / innerSize()) * N);
   if (gx < 0 || gx >= N || gy < 0 || gy >= N) return;
 
   const cur = grid[gy][gx];
   let newVal = cur;
 
-  if (tool === "brush") {
+  if (tool === "brush" && pressure !== null) {
+    // 按力度定深浅，只会加深不会变浅（轻轻划过已经很深的格子不会把它擦淡）
+    const want = pressureLevel(pressure);
+    const empty = cur === "/" || cur === null;
+    if (currentText !== "") {
+      // 文字模式：空格、像素格、文字格都变成文字格（像素格保留原来的深浅）
+      const lv = empty ? 0 : typeof cur === "number" ? cur : TEXT_ALPHA[cur] !== undefined ? Number(cur.slice(1)) : 4;
+      newVal = `#${Math.max(lv, want)}`;
+    } else if (empty || typeof cur === "number") {
+      // 像素模式：只画空格和像素格，文字格不动（和逐级加深一样）
+      newVal = Math.max(empty ? 0 : cur, want);
+    }
+  } else if (tool === "brush") {
     if (currentText !== "") {
       // 文字模式：逐级加深
       if (cur === "/" || cur === null) newVal = "#1";
@@ -321,6 +630,9 @@ function endStroke() {
   strokeCells = new Set();
 }
 
+// 只有触控笔给的是真实力度；鼠标按下永远是 0.5，手指在大部分手机上是 0 或 1
+const penPressure = (e) => (e.pointerType === "pen" && e.pressure > 0 ? e.pressure : null);
+
 function attachPointerEvents(el) {
   el.addEventListener("pointerdown", (e) => {
     if (e.button !== undefined && e.button > 0) return; // 只认左键 / 手指
@@ -330,7 +642,7 @@ function attachPointerEvents(el) {
     currentStroke = [];
     strokeCells = new Set();
     const { x, y } = canvasXY(e, el);
-    paintAt(x, y);
+    paintAt(x, y, penPressure(e));
   });
   el.addEventListener("pointermove", (e) => {
     if (!drawing) return;
@@ -339,7 +651,7 @@ function attachPointerEvents(el) {
     const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
     for (const ev of events.length ? events : [e]) {
       const { x, y } = canvasXY(ev, el);
-      if (x >= 0 && x <= width && y >= 0 && y <= height) paintAt(x, y);
+      if (x >= 0 && x <= width && y >= 0 && y <= height) paintAt(x, y, penPressure(ev));
     }
   });
   el.addEventListener("pointerup", endStroke);
@@ -368,7 +680,6 @@ function setGridSize(n) {
 function windowResized() {
   const s = canvasSize();
   resizeCanvas(s, s);
-  refreshPageFilter();
   markDirty();
 }
 
@@ -387,6 +698,7 @@ function drawText() {
       else if (cell === 2) grid[y][x] = "#2";
       else if (cell === 1) grid[y][x] = "#1";
     }
+  markDirty();
 }
 
 // ── 导出图片 ─────────────────────────────────────────
@@ -546,6 +858,7 @@ function applyLang() {
   const btn = document.getElementById("lang-btn");
   if (btn) btn.textContent = lang === "zh" ? "EN" : "中"; // 按钮显示要切去的语言
   buildThemeSwatches(); // 色块的提示文字也要换
+  buildFilterPanel();
 }
 
 function toggleLang() {
@@ -575,21 +888,27 @@ function storeSavedThemes(list) {
 }
 const sameColors = (a, b) => a.bg.toLowerCase() === b.bg.toLowerCase() && a.ink.toLowerCase() === b.ink.toLowerCase();
 
-// 配色、阴影两个面板：同一时间只开一个（null / "theme" / "shadow"）
+// 配色、阴影、滤镜三个面板：同一时间只开一个（null / "theme" / "shadow" / "filter"）
 let openPop = null;
+const STATIC_POPS = { shadow: ["shadow-panel", "shadow-btn"], filter: ["filter-panel", "filter-btn"] };
 function setOpenPop(name) {
   openPop = name;
   buildThemeSwatches();
-  const panel = document.getElementById("shadow-panel");
-  const btn = document.getElementById("shadow-btn");
-  if (panel) panel.hidden = name !== "shadow";
-  if (btn) {
-    btn.setAttribute("aria-expanded", name === "shadow");
-    btn.querySelector(".caret").textContent = name === "shadow" ? "▴" : "▾";
+  for (const [key, [panelId, btnId]] of Object.entries(STATIC_POPS)) {
+    const panel = document.getElementById(panelId);
+    const btn = document.getElementById(btnId);
+    if (panel) panel.hidden = name !== key;
+    if (btn) {
+      btn.setAttribute("aria-expanded", name === key);
+      btn.querySelector(".caret").textContent = name === key ? "▴" : "▾";
+    }
   }
 }
 function toggleShadowPop() {
   setOpenPop(openPop === "shadow" ? null : "shadow");
+}
+function toggleFilterPop() {
+  setOpenPop(openPop === "filter" ? null : "filter");
 }
 
 // 配色：平时只有一个按钮（当前色块 + 名字），点开才出现预设、我的配色和自定义取色
@@ -811,8 +1130,12 @@ document.addEventListener("keydown", (e) => {
 
 document.addEventListener("DOMContentLoaded", () => {
   const input = document.getElementById("text-input");
-  // 实时同步 currentText（手机端 blur 可能晚于开始画）
-  input.addEventListener("input", (e) => (currentText = e.target.value.trim()));
+  // 边打字边把像素格换成字（drawText 也会同步 currentText）。
+  // 以前只在回车 / 离开输入框时换，第一次打字时画上还没有文字格，要等很久才看到字；
+  // 手机上点画布也不会让输入框失焦（画布按下时 preventDefault 了），更是迟迟不换
+  // 拼音输入法选字时输入框里是字母，先不换，选完字（compositionend）再换
+  input.addEventListener("input", (e) => !e.isComposing && drawText());
+  input.addEventListener("compositionend", drawText);
   input.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -837,8 +1160,6 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("shadow-color").addEventListener("input", (e) => setShadow({ color: e.target.value }));
   // 阴影颜色没单独选过时跟着墨色，换配色后取色器也要跟着变
   document.addEventListener("themechange", syncShadowInputs);
-  // 发灰用的底色、晕染方向都跟配色有关
-  document.addEventListener("themechange", () => typeof width !== "undefined" && refreshPageFilter());
 
   // 会改画面的交互都标记重画（捕获阶段，先于各自的处理函数）
   for (const ev of ["pointerdown", "pointerup", "input", "change", "click", "keydown", "focusout", "themechange"])
@@ -847,15 +1168,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.fonts?.addEventListener?.("loadingdone", markDirty);
   document.fonts?.ready.then(markDirty);
 
-  const filterSelect = document.getElementById("filter-select");
-  filterSelect.value = currentFilter;
-  filterSelect.addEventListener("change", (e) => setFilter(e.target.value));
-  const sparkleToggle = document.getElementById("sparkle-toggle");
-  sparkleToggle.checked = sparkleOn;
-  sparkleToggle.addEventListener("change", (e) => setSparkle(e.target.checked));
-  const glitchToggle = document.getElementById("glitch-toggle");
-  glitchToggle.checked = glitchSeed > 0;
-  glitchToggle.addEventListener("change", (e) => setGlitch(e.target.checked));
+  buildFilterPanel();
   syncShadowInputs();
 
   const sizeInput = document.getElementById("grid-size");
