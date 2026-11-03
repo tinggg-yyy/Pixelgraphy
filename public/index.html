@@ -54,11 +54,16 @@
                 <input id="shadow-y" type="range" min="-0.5" max="0.5" step="0.05" />
               </label>
             </div>
-            <!-- 滤镜：屏幕上只作用在画框里，导出时覆盖整张图；闪粉、故障是叠加在上面的，可以和任何滤镜一起开 -->
+            <!-- 滤镜：屏幕上和导出图都是整张套上（连画框） -->
             <button class="nes-btn pop-btn" id="filter-btn" onclick="toggleFilterPop()" aria-expanded="false">
               <span id="filter-name"></span><span class="caret">▾</span>
             </button>
             <div id="filter-panel" class="pop-panel" hidden></div>
+            <!-- 叠加：闪粉、故障，各自开关，能和任何滤镜一起用 -->
+            <button class="nes-btn pop-btn" id="overlay-btn" onclick="toggleOverlayPop()" aria-expanded="false">
+              <span id="overlay-name"></span><span class="caret">▾</span>
+            </button>
+            <div id="overlay-panel" class="pop-panel" hidden></div>
           </div>
         </aside>
 
@@ -71,6 +76,7 @@
             <button class="nes-btn tool-active" id="brush-btn" onclick="setBrush()" data-zh="画笔" data-en="Brush"></button>
             <button class="nes-btn" id="eraser-btn" onclick="setEraser()" data-zh="橡皮擦" data-en="Eraser"></button>
             <button class="nes-btn" onclick="setUndo()" data-zh="撤销" data-en="Undo"></button>
+            <button class="nes-btn" onclick="setRedo()" data-zh="重做" data-en="Redo"></button>
             <button class="nes-btn" onclick="setClear()" data-zh="清空" data-en="Clear"></button>
           </div>
           <div class="tool-row">

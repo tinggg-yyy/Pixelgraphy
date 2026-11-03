@@ -9,6 +9,7 @@ let grid = [];
 let currentText = "";
 
 let history = []; // 每一笔的 diff 列表
+let redoStack = []; // 撤销掉的笔：{x, y, oldVal, newVal}，重做时按 newVal 改回去；画了新的一笔就清空
 let currentStroke = []; // 当前这笔中被修改的格子 {x, y, oldVal}
 let strokeCells = new Set(); // 当前笔中已记录的格子，避免重复记录
 
@@ -34,15 +35,19 @@ const WIDE_QUERY = "(min-width: 900px) and (orientation: landscape)";
 function canvasSize() {
   const header = document.querySelector("header");
   const headerH = header?.offsetHeight || 60;
+  // 上下留白按实际算（里面有手机、平板顶部 / 底部的安全区，不让开会被液态玻璃盖住）
+  const main = getComputedStyle(document.querySelector("main"));
+  const padY = parseFloat(main.paddingTop) + parseFloat(main.paddingBottom);
   if (window.matchMedia(WIDE_QUERY).matches) {
-    // 画布竖向撑满一屏（减去上下留白 14+14、顶栏下间距 12、画框外阴影 4），宽不超过中间那栏
+    // 画布竖向撑满一屏（减去上下留白、顶栏下间距 12、画框外阴影 4），宽不超过中间那栏
     const col = document.getElementById("canvas-col");
     const colW = (col?.clientWidth || windowWidth - 400) - 4;
-    return Math.floor(Math.max(200, Math.min(colW, windowHeight - headerH - 44)));
+    return Math.floor(Math.max(200, Math.min(colW, windowHeight - headerH - padY - 16)));
   }
   const tools = document.getElementById("tools");
   const left = document.getElementById("left-panel");
-  const reserved = (tools?.offsetHeight || 140) + headerH + (left?.offsetHeight || 0) + 60;
+  // 再加上顶栏下间距、两处 14px 间距和画框外阴影
+  const reserved = (tools?.offsetHeight || 140) + headerH + (left?.offsetHeight || 0) + padY + 12 + 28 + 4;
   return Math.floor(Math.max(200, Math.min(windowWidth * 0.9, windowHeight - reserved, 640)));
 }
 
@@ -265,7 +270,7 @@ function setGlitch(on) {
     localStorage.setItem("pixelgraphy_glitch", String(glitchSeed));
   } catch (_) {}
   markDirty();
-  buildFilterPanel();
+  buildOverlayPanel();
 }
 
 function setSparkle(on) {
@@ -274,7 +279,7 @@ function setSparkle(on) {
     localStorage.setItem("pixelgraphy_sparkle", on ? "1" : "0");
   } catch (_) {}
   markDirty();
-  buildFilterPanel();
+  buildOverlayPanel();
 }
 
 function setFilter(id) {
@@ -288,7 +293,7 @@ function setFilter(id) {
 }
 
 // ── 滤镜按钮 ─────────────────────────────────────────
-// 点开是一个面板：上面选滤镜（单选），下面是叠加效果闪粉、故障（各自开关，能和任何滤镜一起用）
+// 点开是一个面板：预设滤镜（单选）、我的滤镜、自制。叠加效果（闪粉、故障）是旁边单独的按钮
 
 const FILTER_LABELS = {
   none: ["无", "None"],
@@ -310,15 +315,37 @@ const filterName = (id) => {
   return t(...(FILTER_LABELS[id] || FILTER_LABELS.none));
 };
 
-// 按钮上：滤镜名 + 开着的叠加效果；什么都没开就显示「滤镜」
+// 按钮上：选了滤镜就显示滤镜名，没选就显示「滤镜」
 function updateFilterLabel() {
   const label = document.getElementById("filter-name");
-  if (!label) return;
-  const parts = [];
-  if (currentFilter !== "none") parts.push(filterName(currentFilter));
-  if (sparkleOn) parts.push(t("闪粉", "Sparkle"));
-  if (glitchSeed) parts.push(t("故障", "Glitch"));
-  label.textContent = parts.length ? parts.join(" + ") : t("滤镜", "Filter");
+  if (label) label.textContent = currentFilter !== "none" ? filterName(currentFilter) : t("滤镜", "Filter");
+}
+
+// 叠加按钮：闪粉、故障各自开关；按钮上显示开着的那几样，都没开就显示「叠加」
+function buildOverlayPanel() {
+  const panel = document.getElementById("overlay-panel");
+  const label = document.getElementById("overlay-name");
+  if (!panel || !label) return;
+  const items = [
+    [t("闪粉", "Sparkle"), sparkleOn, () => setSparkle(!sparkleOn)],
+    [t("故障", "Glitch"), glitchSeed > 0, () => setGlitch(!glitchSeed)],
+  ];
+  const on = items.filter(([, active]) => active).map(([text]) => text);
+  label.textContent = on.length ? on.join(" + ") : t("叠加", "Overlay");
+
+  panel.innerHTML = "";
+  const grid = document.createElement("div");
+  grid.className = "option-grid two-col";
+  for (const [text, active, onClick] of items) {
+    const b = document.createElement("button");
+    b.className = "nes-btn small-btn" + (active ? " tool-active" : "");
+    b.textContent = text;
+    b.setAttribute("aria-pressed", active);
+    b.onclick = onClick;
+    grid.appendChild(b);
+  }
+  panel.appendChild(grid);
+  positionOpenPop();
 }
 
 // 现在这个滤镜的滑杆参数（自制的就是它自己；收藏的用存下的；预设的大致还原）
@@ -386,10 +413,6 @@ function buildFilterPanel() {
     mine.appendChild(hint);
   }
 
-  const overlays = section(t("叠加", "Overlay"));
-  option(overlays, t("闪粉", "Sparkle"), sparkleOn, () => setSparkle(!sparkleOn));
-  option(overlays, t("故障", "Glitch"), glitchSeed > 0, () => setGlitch(!glitchSeed));
-
   // 自制：点开是一排滑杆，从现在这个滤镜的样子开始调
   const editToggle = document.createElement("button");
   editToggle.className = "nes-btn small-btn filter-edit-toggle" + (filterEditorOpen ? " tool-active" : "");
@@ -399,7 +422,8 @@ function buildFilterPanel() {
     buildFilterPanel();
   };
   panel.appendChild(editToggle);
-  if (!filterEditorOpen) return;
+  // 面板高度变了（展开 / 收起自制），重新定位一下，免得超出屏幕
+  if (!filterEditorOpen) return positionOpenPop();
 
   const editor = document.createElement("div");
   editor.className = "filter-editor";
@@ -408,7 +432,7 @@ function buildFilterPanel() {
   // 一拖滑杆就变成「自制（未收藏）」：就地改高亮，不重建面板
   const markCustom = () => {
     for (const el of panel.querySelectorAll(".option-grid .tool-active"))
-      if (el.parentElement !== overlays && !el.dataset.custom) el.classList.remove("tool-active");
+      if (!el.dataset.custom) el.classList.remove("tool-active");
     if (!mine.querySelector("[data-custom]")) {
       mine.querySelector(".theme-hint")?.remove();
       unsavedChip();
@@ -487,6 +511,7 @@ function buildFilterPanel() {
       : saveCurrent;
   };
   setAction(savedFilters.find((x) => x.id === currentFilter) || null);
+  positionOpenPop();
 }
 
 // 画框也画在画布里（不用 CSS 边框），这样滤镜能连框一起盖住。
@@ -542,13 +567,26 @@ function setClear() {
         stroke.push({ x, y, oldVal: grid[y][x] });
         grid[y][x] = "/";
       }
-  if (stroke.length) history.push(stroke); // 清空也能撤销
+  if (stroke.length) {
+    history.push(stroke); // 清空也能撤销
+    redoStack = [];
+  }
 }
 
 function setUndo() {
   if (history.length === 0) return;
   const stroke = history.pop();
+  // 撤销前先记下现在的样子，重做时改回来
+  redoStack.push(stroke.map((c) => ({ ...c, newVal: grid[c.y][c.x] })));
   for (const { x, y, oldVal } of stroke) grid[y][x] = oldVal;
+}
+
+// 重做：撤销点多了可以一步步改回来
+function setRedo() {
+  if (redoStack.length === 0) return;
+  const stroke = redoStack.pop();
+  for (const { x, y, newVal } of stroke) grid[y][x] = newVal;
+  history.push(stroke.map(({ x, y, oldVal }) => ({ x, y, oldVal })));
 }
 
 // ── 画（鼠标、手指、触控笔都走 pointer 事件）────────────
@@ -625,7 +663,10 @@ function canvasXY(e, el) {
 function endStroke() {
   if (!drawing) return;
   drawing = false;
-  if (currentStroke.length > 0) history.push(currentStroke);
+  if (currentStroke.length > 0) {
+    history.push(currentStroke);
+    redoStack = [];
+  }
   currentStroke = [];
   strokeCells = new Set();
 }
@@ -675,12 +716,14 @@ function setGridSize(n) {
   for (let y = 0; y < N; y++)
     for (let x = 0; x < N; x++) grid[y][x] = old[Math.floor((y * oldN) / N)][Math.floor((x * oldN) / N)];
   history = [];
+  redoStack = [];
 }
 
 function windowResized() {
   const s = canvasSize();
   resizeCanvas(s, s);
   markDirty();
+  positionOpenPop();
 }
 
 // ── 文字 ─────────────────────────────────────────────
@@ -859,6 +902,7 @@ function applyLang() {
   if (btn) btn.textContent = lang === "zh" ? "EN" : "中"; // 按钮显示要切去的语言
   buildThemeSwatches(); // 色块的提示文字也要换
   buildFilterPanel();
+  buildOverlayPanel();
 }
 
 function toggleLang() {
@@ -888,9 +932,13 @@ function storeSavedThemes(list) {
 }
 const sameColors = (a, b) => a.bg.toLowerCase() === b.bg.toLowerCase() && a.ink.toLowerCase() === b.ink.toLowerCase();
 
-// 配色、阴影、滤镜三个面板：同一时间只开一个（null / "theme" / "shadow" / "filter"）
+// 配色、阴影、滤镜、叠加四个面板：同一时间只开一个（null / "theme" / "shadow" / "filter" / "overlay"）
 let openPop = null;
-const STATIC_POPS = { shadow: ["shadow-panel", "shadow-btn"], filter: ["filter-panel", "filter-btn"] };
+const STATIC_POPS = {
+  shadow: ["shadow-panel", "shadow-btn"],
+  filter: ["filter-panel", "filter-btn"],
+  overlay: ["overlay-panel", "overlay-btn"],
+};
 function setOpenPop(name) {
   openPop = name;
   buildThemeSwatches();
@@ -903,12 +951,39 @@ function setOpenPop(name) {
       btn.querySelector(".caret").textContent = name === key ? "▴" : "▾";
     }
   }
+  positionOpenPop();
 }
+// 面板出现在按下的那个按钮正下方；右边放不下就往左挪，不超出屏幕
+const POP_PARTS = {
+  theme: [".theme-pop", ".theme-btn"],
+  shadow: ["#shadow-panel", "#shadow-btn"],
+  filter: ["#filter-panel", "#filter-btn"],
+  overlay: ["#overlay-panel", "#overlay-btn"],
+};
+function positionOpenPop() {
+  if (!openPop) return;
+  const [panelSel, btnSel] = POP_PARTS[openPop];
+  const panel = document.querySelector(panelSel), btn = document.querySelector(btnSel);
+  const row = document.getElementById("style-row");
+  if (!panel || !btn || !row || panel.hidden) return;
+  const r = row.getBoundingClientRect(), b = btn.getBoundingClientRect();
+  const maxLeft = window.innerWidth - 16 - panel.offsetWidth - r.left;
+  panel.style.left = `${Math.max(16 - r.left, Math.min(b.left - r.left, maxLeft))}px`;
+  // 都往下弹；下面实在放不下（比如滤镜展开自制后很高）才往上弹，上面也放不下就贴着屏幕顶
+  const h = panel.offsetHeight;
+  const below = b.bottom + 8;
+  const top = below + h <= window.innerHeight - 8 ? below : Math.max(8, b.top - 8 - h);
+  panel.style.top = `${top - r.top}px`;
+}
+
 function toggleShadowPop() {
   setOpenPop(openPop === "shadow" ? null : "shadow");
 }
 function toggleFilterPop() {
   setOpenPop(openPop === "filter" ? null : "filter");
+}
+function toggleOverlayPop() {
+  setOpenPop(openPop === "overlay" ? null : "overlay");
 }
 
 // 配色：平时只有一个按钮（当前色块 + 名字），点开才出现预设、我的配色和自定义取色
@@ -956,10 +1031,19 @@ function buildThemeSwatches() {
   pop.hidden = openPop !== "theme";
   row.appendChild(pop);
 
-  const section = (title) => {
+  // current：选中的那个配色的全名，跟在标题后面（按钮上英文名太长会被截断，这里能看全）
+  const section = (title, current) => {
     const h = document.createElement("div");
     h.className = "theme-section-title";
-    h.textContent = title;
+    const text = document.createElement("span");
+    text.textContent = title;
+    h.appendChild(text);
+    if (current) {
+      const c = document.createElement("span");
+      c.className = "theme-current";
+      c.textContent = current;
+      h.appendChild(c);
+    }
     const grid = document.createElement("div");
     grid.className = "swatch-grid";
     pop.append(h, grid);
@@ -978,7 +1062,7 @@ function buildThemeSwatches() {
     grid.appendChild(b);
   };
 
-  const presetGrid = section(t("预设", "Presets"));
+  const presetGrid = section(t("预设", "Presets"), currentTheme.id !== "custom" && t(currentTheme.zh, currentTheme.en));
   for (const p of THEME_PRESETS) swatch(presetGrid, t(p.zh, p.en), p, p.id === currentTheme.id, () => setTheme(p));
 
   // 收藏的配色带名字：色块 + 名字，两列排开
@@ -1031,6 +1115,7 @@ function buildThemeSwatches() {
         el.classList.remove("swatch-active", "saved-chip-active");
       paintSwatch(preview, currentTheme);
       name.textContent = t("自定义", "Custom");
+      pop.querySelector(".theme-current")?.remove();
       setAction(-1);
     });
     // 取色器关掉后再按收藏状态重建一次（选回了已收藏的颜色就显示删除）
@@ -1053,14 +1138,14 @@ function buildThemeSwatches() {
   picker(t("底色", "Bg"), t("自定义底色", "Custom background"), currentTheme.bg, (bg) =>
     setTheme({ id: "custom", bg, ink: currentTheme.ink })
   );
-  auto(t("自动底色", "Auto bg"), t("按墨色自动配一个底色", "Pick a background that suits the ink"), () => ({
+  auto(t("自动", "Auto"), t("按墨色自动配一个底色", "Pick a background that suits the ink"), () => ({
     bg: contrastColor(currentTheme.ink),
     ink: currentTheme.ink,
   }));
   picker(t("墨色", "Ink"), t("自定义墨色", "Custom ink"), currentTheme.ink, (ink) =>
     setTheme({ id: "custom", bg: currentTheme.bg, ink })
   );
-  auto(t("自动墨色", "Auto ink"), t("按底色自动配一个墨色", "Pick an ink color that suits the background"), () => ({
+  auto(t("自动", "Auto"), t("按底色自动配一个墨色", "Pick an ink color that suits the background"), () => ({
     bg: currentTheme.bg,
     ink: contrastColor(currentTheme.bg),
   }));
@@ -1118,6 +1203,7 @@ function buildThemeSwatches() {
         : saveCurrent;
   };
   setAction(savedIndex);
+  positionOpenPop();
 }
 
 // 点面板外面或按 Esc 收起面板
@@ -1145,10 +1231,14 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   input.addEventListener("blur", drawText);
 
-  // 键盘快捷键：B 画笔 / E 橡皮 / Cmd(Ctrl)+Z 撤销
+  // 键盘快捷键：B 画笔 / E 橡皮 / Cmd(Ctrl)+Z 撤销 / Cmd+Shift+Z 或 Ctrl+Y 重做
   document.addEventListener("keydown", (e) => {
     if (document.activeElement?.matches("input, select")) return;
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+    const mod = e.metaKey || e.ctrlKey, key = e.key.toLowerCase();
+    if (mod && (key === "y" || (key === "z" && e.shiftKey))) {
+      e.preventDefault();
+      setRedo();
+    } else if (mod && key === "z") {
       e.preventDefault();
       setUndo();
     } else if (e.key === "b") setBrush();
@@ -1169,6 +1259,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.fonts?.ready.then(markDirty);
 
   buildFilterPanel();
+  buildOverlayPanel();
   syncShadowInputs();
 
   const sizeInput = document.getElementById("grid-size");

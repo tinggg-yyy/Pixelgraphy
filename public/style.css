@@ -52,7 +52,8 @@ main {
   min-height: 100dvh;
   max-width: 720px;
   margin: 0 auto;
-  padding: 16px 16px calc(24px + env(safe-area-inset-bottom));
+  /* 顶部加上安全区：页面铺到了状态栏 / Safari 工具栏下面（viewport-fit=cover），不让开会被液态玻璃盖住、糊掉 */
+  padding: calc(34px + env(safe-area-inset-top)) 16px calc(12px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -86,11 +87,11 @@ h1 {
 }
 
 /* 配色、阴影：两个按钮一行，点开是浮在页面上的面板（不挤动下面的画布），面板相对这一行定位 */
+/* 竖屏：两列等宽网格，配色 阴影 / 滤镜 叠加，每个按钮正好半行（面板是绝对定位，不占格子） */
 #style-row {
   position: relative;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   width: 100%;
 }
@@ -98,13 +99,44 @@ h1 {
   display: flex;
   min-width: 0;
 }
+#theme-row .theme-btn {
+  flex: 1;
+}
+/* 小箭头固定贴在右边，右边留出它的位置；色块 + 名字在剩下的地方居中 */
 .nes-btn.theme-btn,
 .nes-btn.pop-btn {
+  position: relative;
+  justify-content: center;
   gap: 8px;
   max-width: 100%;
   margin: 0;
-  padding: 4px 10px 4px 6px !important;
+  padding: 4px 22px 4px 6px !important;
   white-space: nowrap;
+}
+/* 阴影、滤镜、叠加：Zpix 字右边有留白、字间距最后也多一格，整体看着偏左约 2.5px，左边多留一点补回来 */
+.nes-btn.pop-btn {
+  padding-left: 11px !important;
+}
+.pop-btn .caret,
+.theme-btn .caret {
+  position: absolute;
+  right: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+/* 配色、阴影按钮上的色块固定贴在左边；名字和下面滤镜、叠加的名字对齐到同一个中心点
+   （左边留出色块，名字不会盖到它；右边多留一些，把中心点往左挪到和滤镜、叠加一样） */
+.nes-btn.theme-btn,
+.nes-btn.pop-btn:has(> .swatch) {
+  padding-left: 34px !important;
+  padding-right: 44px !important;
+}
+.theme-btn > .swatch,
+.pop-btn > .swatch {
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  transform: translateY(-50%);
 }
 .theme-btn .theme-name {
   min-width: 0;
@@ -137,9 +169,18 @@ h1 {
 .pop-panel[hidden] {
   display: none;
 }
+/* 标题用淡一点的墨色（不用 opacity，不然后面的名字也跟着变淡） */
 .theme-section-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
   font-size: 13px;
-  opacity: 0.75;
+  color: rgb(var(--ink-rgb) / 0.75);
+}
+/* 选中的预设全名：贴右边，用正常墨色，比标题清楚一点 */
+.theme-current {
+  color: var(--c-text);
+  text-align: right;
 }
 .theme-section-title:not(:first-child) {
   margin-top: 6px;
@@ -159,18 +200,21 @@ h1 {
   font-size: 13px;
   opacity: 0.6;
 }
-/* 自定义：底色、墨色各一行，取色器在左，「自动」按钮靠右 */
+/* 自定义：一行排开 —— 底色 [色块] [自动]   墨色 [色块] [自动] */
 .theme-custom {
-  display: grid;
-  grid-template-columns: 1fr auto;
+  display: flex;
   align-items: center;
-  gap: 10px 14px;
+  gap: 6px;
   margin-top: 6px;
   padding-top: 12px;
   border-top: 1px dashed rgb(var(--line-rgb) / 0.4);
 }
 .theme-custom .nes-btn {
   margin: 0;
+}
+/* 墨色那一组往右推，两组分开 */
+.theme-custom > :nth-child(3) {
+  margin-left: auto;
 }
 /* 起名 + 收藏 / 删除 */
 .theme-name-row {
@@ -223,11 +267,14 @@ h1 {
   border-color: var(--c-text);
 }
 
+/* 和像素框一样大的小正方形 */
 .nes-btn.lang-btn {
-  min-width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
   margin: 0;
-  padding: 0 8px !important;
+  padding: 0 !important;
+  font-size: 13px !important;
+  letter-spacing: 0;
 }
 
 .swatch {
@@ -243,13 +290,13 @@ h1 {
   outline-offset: 2px;
 }
 
-/* 手机竖屏：配色阴影滤镜贴顶、工具贴底，画布在中间；14px 是最小间距 */
+/* 手机竖屏：配色阴影滤镜按钮、画布、工具从上到下，剩下的空白平均分到每块之间（最小 14px） */
 .pixeldraw {
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: space-between;
+  justify-content: space-evenly;
   gap: 14px;
   width: 100%;
 }
@@ -273,6 +320,21 @@ h1 {
   cursor: crosshair;
 }
 
+/* 竖屏：画笔 橡皮擦 一行，撤销 重做 清空 一行，都撑满整行 */
+#tools .tool-row:first-child {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px 8px;
+}
+#tools .tool-row:first-child .nes-btn {
+  grid-column: span 2;
+  min-width: 0;
+  margin: 0;
+}
+#tools .tool-row:first-child .nes-btn:nth-child(-n + 2) {
+  grid-column: span 3;
+}
+
 /* 竖屏：样式、格式、保存放在同一行，样式下拉框占剩下的宽度 */
 #tools .tool-row:last-child {
   flex-wrap: nowrap;
@@ -293,7 +355,7 @@ h1 {
 #tools {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 14px;
   width: 100%;
   max-width: 640px;
 }
@@ -369,8 +431,8 @@ h1 {
 }
 /* 像素数：小正方形，去掉上下箭头 */
 #grid-size {
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
   margin: 0;
   padding: 0 !important;
   text-align: center;
@@ -439,9 +501,12 @@ h1 {
   flex-direction: column;
   gap: 10px;
 }
-/* 滤镜面板：滤镜选项和叠加效果都是按钮，按下的那个是凹下去的（和画笔 / 橡皮一样） */
+/* 滤镜、叠加面板：选项都是按钮，按下的那个是凹下去的（和画笔 / 橡皮一样） */
 #filter-panel {
   width: min(300px, calc(100vw - 32px));
+}
+#overlay-panel {
+  width: min(220px, calc(100vw - 32px));
 }
 .option-grid {
   display: grid;
@@ -481,7 +546,8 @@ h1 {
   margin: 0;
   accent-color: var(--c-text);
 }
-#filter-btn #filter-name {
+#filter-btn #filter-name,
+#overlay-btn #overlay-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -490,16 +556,16 @@ h1 {
 /* ── 电脑 / iPad 横屏：左栏（配色、阴影、滤镜三个按钮）· 画布居中 · 右栏（工具、写字、导出） ── */
 @media (min-width: 900px) and (orientation: landscape) {
   /* 画布边长 = 一屏高度减去上下留白和顶栏；两边栏分剩下的宽度。
-     84px = 上下 padding 14+14 + 顶栏 40 + 顶栏下间距 12 + 画框外阴影 4，和 sketch.js 的 canvasSize 对应 */
+     80px = 上下 padding 32+0 + 顶栏 32 + 顶栏下间距 12 + 画框外阴影 4，再减去上下安全区；和 sketch.js 的 canvasSize 对应 */
   main {
-    --canvas-s: calc(100vh - 84px);
+    --canvas-s: calc(100vh - 80px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
     --gap: 24px;
     max-width: none;
-    padding: 14px 24px;
+    padding: calc(32px + env(safe-area-inset-top)) 24px env(safe-area-inset-bottom);
   }
   @supports (height: 100dvh) {
     main {
-      --canvas-s: calc(100dvh - 84px);
+      --canvas-s: calc(100dvh - 80px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
     }
   }
   header {
@@ -531,20 +597,9 @@ h1 {
   }
 
   /* 配色、阴影按钮在窄栏里上下排、撑满整栏 */
+  /* 四个按钮一列，排在左栏左上方 */
   #style-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  #theme-row .theme-btn {
-    flex: 1;
-  }
-  .nes-btn.theme-btn,
-  .nes-btn.pop-btn {
-    justify-content: flex-start;
-  }
-  .pop-btn .caret,
-  .theme-btn .caret {
-    margin-left: auto;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   /* 工具按钮 2×2 */
@@ -553,9 +608,16 @@ h1 {
     grid-template-columns: 1fr 1fr;
     gap: 10px;
   }
-  #tools .tool-row:first-child .nes-btn {
+  #tools .tool-row:first-child .nes-btn,
+  #tools .tool-row:first-child .nes-btn:nth-child(-n + 2) {
+    grid-column: auto;
     margin: 0;
   }
+  /* 画笔 橡皮擦 / 撤销 重做 / 清空（单独一排，撑满） */
+  #tools .tool-row:first-child .nes-btn:last-child {
+    grid-column: 1 / -1;
+  }
+
 
   /* 导出：每项一行；下拉框在标签下面撑满整栏，窄栏也放得下 */
   #tools .tool-row:last-child {
@@ -594,12 +656,24 @@ select {
 .nes-input::placeholder {
   text-align: center;
 }
-/* 配色按钮里是色块 + 名字，按顺序排就行，不补偏移 */
+/* 配色、阴影、滤镜、叠加按钮里是好几块（色块、名字、箭头），每块都补偏移会错开，不补 */
 .nes-btn.theme-btn,
-.nes-btn.theme-btn * {
+.nes-btn.theme-btn *,
+.nes-btn.pop-btn,
+.nes-btn.pop-btn * {
   text-indent: 0;
 }
-/* 下拉框右边有箭头，字只在剩下的地方居中；左边多留一点，让字在整个框里居中 */
+/* 下拉框：去掉系统自带的黑色箭头，用墨色画一个小三角（两块斜切的渐变拼成）；
+   右边留出箭头的位置，字在箭头左边剩下的地方居中 */
 select.nes-input.small-input {
-  padding-left: 14px !important;
+  -webkit-appearance: none;
+  appearance: none;
+  padding-left: 6px !important;
+  padding-right: 20px !important;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--c-text) 50%),
+    linear-gradient(-45deg, transparent 50%, var(--c-text) 50%);
+  background-size: 4px 4px;
+  background-position: calc(100% - 12px) 50%, calc(100% - 8px) 50%;
+  background-repeat: no-repeat;
 }
